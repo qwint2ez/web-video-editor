@@ -1,10 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Simple Video Editor</title>
-  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    video {
+      max-width: 100%;
+      margin-top: 20px;
+    }
+    .controls {
+      margin-top: 20px;
+    }
+    .controls label, .controls input, .controls button {
+      margin-right: 10px;
+    }
+    #customTimeline {
+      width: 100%;
+    }
+    #debug {
+      color: blue;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
   <h1>Simple Video Editor</h1>
@@ -12,14 +36,15 @@
   <p id="debug">Статус: Ожидание загрузки видео...</p>
   <video id="video" controls></video>
   <div class="controls">
+    <label>Текущая шкала времени: <span id="timelineDuration">0 сек</span></label><br>
+    <input type="range" id="customTimeline" min="0" max="0" value="0" step="0.1">
+    <br>
     <label for="start">Начало (сек):</label>
     <input type="number" id="start" min="0" step="0.1" value="0">
     <label for="end">Конец (сек):</label>
     <input type="number" id="end" min="0" step="0.1" value="0">
     <button id="applyBtn">Применить</button>
   </div>
-  <h2>Обрезанное видео</h2>
-  <video id="trimmedVideo" controls></video>
-  <script type="module" src="main.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
