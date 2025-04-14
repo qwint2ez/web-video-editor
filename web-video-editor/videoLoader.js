@@ -3,7 +3,6 @@ export class VideoLoader {
     this.inputElement = inputElement;
     this.videoElement = videoElement;
     this.debugElement = debugElement;
-    this.duration = 0;
     this.bindEvents();
   }
 
@@ -15,11 +14,10 @@ export class VideoLoader {
         const videoURL = URL.createObjectURL(file);
         this.videoElement.src = videoURL;
         this.videoElement.onloadedmetadata = () => {
-          this.duration = this.videoElement.duration;
-          this.debugElement.textContent = `Статус: Видео загружено, длительность ${this.duration} сек`;
+          this.debugElement.textContent = `Статус: Видео загружено, длительность ${this.videoElement.duration} сек`;
           const endInput = document.getElementById('end');
-          endInput.max = this.duration;
-          endInput.value = this.duration;
+          endInput.max = this.videoElement.duration;
+          endInput.value = this.videoElement.duration;
           document.getElementById('start').value = 0;
         };
         this.videoElement.onerror = () => {
@@ -29,13 +27,5 @@ export class VideoLoader {
         this.debugElement.textContent = 'Статус: Файл не выбран!';
       }
     });
-  }
-
-  getDuration() {
-    return this.duration;
-  }
-
-  getVideoElement() {
-    return this.videoElement;
   }
 }

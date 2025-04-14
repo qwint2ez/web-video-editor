@@ -1,0 +1,133 @@
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  color: #333;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+h1 {
+  font-size: 2.5em;
+  color: #2c3e50;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+h2, h3 {
+  color: #34495e;
+}
+
+.upload-section {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.upload-btn {
+  display: inline-block;
+  padding: 12px 25px;
+  background: linear-gradient(45deg, #1abc9c, #16a085);
+  color: white;
+  border-radius: 25px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.upload-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+#debug {
+  text-align: center;
+  color: #7f8c8d;
+  margin-bottom: 20px;
+}
+
+.controls {
+  background: white;
+  padding: 20px;
+  border-radius: 15px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.controls h3 {
+  margin: 0 10px 0 0;
+}
+
+.controls input[type="number"],
+.controls input[type="text"],
+.controls select,
+.controls input[type="color"] {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.video-container {
+  position: relative;
+  background: white;
+  padding: 20px;
+  border-radius: 15px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+video {
+  width: 100%;
+  border-radius: 10px;
+}
+
+#textOverlay {
+  position: absolute;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 5px 10px;
+  border-radius: 5px;
+  z-index: 10;
+}
+
+.custom-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #ecf0f1;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+button {
+  padding: 8px 15px;
+  background: linear-gradient(45deg, #3498db, #2980b9);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+button:hover {
+  background: linear-gradient(45deg, #2980b9, #3498db);
+}
+
+#timelineRange, #volumeSlider {
+  flex-grow: 1;
+  cursor: pointer;
+}
+
+#volumeSlider {
+  width: 100px;
+}

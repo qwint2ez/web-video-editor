@@ -1,8 +1,10 @@
 export class VideoTrimmer {
-  constructor(sourceVideo, trimmedVideo, debugElement) {
-    this.sourceVideo = sourceVideo;
-    this.trimmedVideo = trimmedVideo;
+  constructor(videoElement, debugElement, timelineRange, currentTime, duration) {
+    this.videoElement = videoElement;
     this.debugElement = debugElement;
+    this.timelineRange = timelineRange;
+    this.currentTime = currentTime;
+    this.duration = duration;
     this.startTime = 0;
     this.endTime = 0;
     this.isTrimmed = false;
@@ -10,41 +12,42 @@ export class VideoTrimmer {
 
   applyTrim(startTime, endTime) {
     if (endTime <= startTime) {
-      this.debugElement.textContent = 'Статус: Ошибка! Конец должен быть позже начала';
-      throw new Error('Конец должен быть позже начала');
+      this.debugElement.textContent = 'Status: Error! End time must be greater than start time';
+      throw new Error('End time must be greater than start time');
     }
-    if (startTime < 0 || endTime > this.sourceVideo.duration) {
-      this.debugElement.textContent = 'Статус: Ошибка! Неверный диапазон времени';
-      throw new Error('Неверный диапазон времени');
+    if (startTime < 0 || endTime > this.videoElement.duration) {
+      this.debugElement.textContent = 'Status: Error! Invalid time range';
+      throw new Error('Invalid time range');
     }
 
     this.startTime = startTime;
     this.endTime = endTime;
     this.isTrimmed = true;
 
-    this.trimmedVideo.src = this.sourceVideo.src;
-    this.trimmedVideo.currentTime = this.startTime;
+    this.videoElement.currentTime = this.startTime;
+    const trimmedDuration = endTime - startTime;
+    this.timelineRange.max = trimmedDuration;
+    this.duration.textContent = this.formatTime(trimmedDuration);
 
-    this.trimmedVideo.addEventListener('timeupdate', () => {
+    this.videoElement.addEventListener('timeupdate', () => {
       if (this.isTrimmed) {
-        if (this.trimmedVideo.currentTime >= this.endTime) {
-          this.trimmedVideo.pause();
-          this.trimmedVideo.currentTime = this.startTime;
+        if (this.videoElement.currentTime >= this.endTime) {
+          this.videoElement.pause();
+          this.videoElement.currentTime = this.startTime;
+          document.getElementById('playPauseBtn').textContent = 'Play';
         }
-        if (this.trimmedVideo.currentTime < this.startTime) {
-          this.trimmedVideo.currentTime = this.startTime;
+        if (this.videoElement.currentTime < this.startTime) {
+          this.videoElement.currentTime = this.startTime;
         }
       }
     });
 
-    this.debugElement.textContent = `Статус: Видео обрезано с ${this.startTime} до ${this.endTime} сек`;
+    this.debugElement.textContent = `Status: Video trimmed from ${this.startTime} to ${this.endTime} sec`;
   }
 
-  getTrimmedInfo() {
-    return {
-      startTime: this.startTime,
-      endTime: this.endTime,
-      isTrimmed: this.isTrimmed
-    };
+  formatTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
   }
 }

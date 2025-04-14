@@ -1,136 +1,139 @@
-// Получаем элементы DOM
+import { VideoTrimmer } from './videoTrimmer.js';
+import { FilterApplier } from './filterApplier.js';
+import { TextOverlay } from './textOverlay.js';
+import { VideoMerger } from './videoMerger.js';
+import { AudioOverlay } from './audioOverlay.js';
+
 const videoInput = document.getElementById('videoInput');
-const video = document.getElementById('video');
+const audioInput = document.getElementById('audioInput');
+const processedVideo = document.getElementById('processedVideo');
 const debug = document.getElementById('debug');
 const startInput = document.getElementById('start');
 const endInput = document.getElementById('end');
-const applyBtn = document.getElementById('applyBtn');
-const customTimeline = document.getElementById('customTimeline');
-const timelineDuration = document.getElementById('timelineDuration');
+const applyTrimBtn = document.getElementById('applyTrimBtn');
+const textInput = document.getElementById('textInput');
+const textPosition = document.getElementById('textPosition');
+const textColor = document.getElementById('textColor');
+const textSize = document.getElementById('textSize');
+const applyTextBtn = document.getElementById('applyTextBtn');
+const filterSelect = document.getElementById('filterSelect');
+const applyFilterBtn = document.getElementById('applyFilterBtn');
+const applyAudioBtn = document.getElementById('applyAudioBtn');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const muteBtn = document.getElementById('muteBtn');
+const volumeSlider = document.getElementById('volumeSlider');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const timelineRange = document.getElementById('timelineRange');
+const currentTime = document.getElementById('currentTime');
+const duration = document.getElementById('duration');
 
-// Проверяем наличие элементов
-if (!videoInput || !video || !debug || !startInput || !endInput || !applyBtn || !customTimeline || !timelineDuration) {
-  debug.textContent = 'Статус: Ошибка! Проверь ID элементов в HTML';
-  console.error('Ошибка: один из элементов не найден');
-  throw new Error('Missing DOM elements');
-}
+let currentVideoFiles = [];
 
-// Локальные данные для обрезки
-let trimState = {
-  startTime: 0,
-  endTime: 0,
-  isTrimmed: false,
-  originalDuration: 0
-};
+videoInput.addEventListener('change', (e) => {
+  currentVideoFiles = Array.from(e.target.files);
+  if (currentVideoFiles.length === 1) {
+    processedVideo.src = URL.createObjectURL(currentVideoFiles[0]);
+    processedVideo.onloadedmetadata = () => {
+      timelineRange.max = processedVideo.duration;
+      duration.textContent = formatTime(processedVideo.duration);
+      debug.textContent = 'Status: Video loaded';
+    };
+  } else if (currentVideoFiles.length > 1) {
+    videoMerger.mergeVideos(currentVideoFiles);
+  }
+});
 
-// Загрузка видео
-function loadVideo() {
-  videoInput.addEventListener('change', (e) => {
-    debug.textContent = 'Статус: Загружаем видео...';
-    const file = e.target.files[0];
+const videoTrimmer = new VideoTrimmer(processedVideo, debug, timelineRange, currentTime, duration);
+const filterApplier = new FilterApplier(processedVideo, debug);
+const textOverlay = new TextOverlay(processedVideo, debug);
+const videoMerger = new VideoMerger(processedVideo, debug, timelineRange, currentTime, duration);
+const audioOverlay = new AudioOverlay(processedVideo, audioInput, debug);
 
-    if (file) {
-      const videoURL = URL.createObjectURL(file);
-      video.src = videoURL;
-
-      video.onloadedmetadata = () => {
-        trimState.originalDuration = video.duration;
-        trimState.endTime = video.duration;
-        startInput.value = 0;
-        endInput.value = video.duration;
-        customTimeline.max = video.duration;
-        customTimeline.value = 0;
-        timelineDuration.textContent = `${video.duration} сек`;
-        debug.textContent = `Статус: Видео загружено, длительность ${video.duration} сек`;
-      };
-
-      video.onerror = () => {
-        debug.textContent = 'Статус: Ошибка загрузки видео! Проверь формат файла';
-        console.error('Ошибка загрузки видео');
-      };
-    } else {
-      debug.textContent = 'Статус: Файл не выбран!';
-    }
-  });
-}
-
-// Синхронизация кастомной шкалы времени
-function syncTimeline() {
-  customTimeline.addEventListener('input', () => {
-    if (trimState.isTrimmed) {
-      const timelineValue = parseFloat(customTimeline.value);
-      const mappedTime = trimState.startTime + timelineValue;
-      video.currentTime = mappedTime;
-    } else {
-      video.currentTime = parseFloat(customTimeline.value);
-    }
-  });
-
-  video.addEventListener('timeupdate', () => {
-    if (trimState.isTrimmed) {
-      const relativeTime = video.currentTime - trimState.startTime;
-      customTimeline.value = Math.max(0, Math.min(trimState.endTime - trimState.startTime, relativeTime));
-    } else {
-      customTimeline.value = video.currentTime;
-    }
-  });
-}
-
-// Применение обрезки
-function applyTrim() {
+applyTrimBtn.addEventListener('click', () => {
   const startTime = parseFloat(startInput.value);
   const endTime = parseFloat(endInput.value);
-
-  if (isNaN(startTime) || isNaN(endTime)) {
-    debug.textContent = 'Статус: Ошибка! Введите корректные числа';
-    alert('Введите корректные числа для начала и конца');
-    return;
+  try {
+    videoTrimmer.applyTrim(startTime, endTime);
+  } catch (error) {
+    debug.textContent = `Status: Error! ${error.message}`;
   }
+});
 
-  if (endTime <= startTime) {
-    debug.textContent = 'Статус: Ошибка! Конец должен быть позже начала';
-    alert('Конец должен быть позже начала');
-    return;
+applyTextBtn.addEventListener('click', () => {
+  const text = textInput.value;
+  const position = textPosition.value;
+  const color = textColor.value;
+  const size = textSize.value;
+  try {
+    textOverlay.applyText(text, position, color, size);
+  } catch (error) {
+    debug.textContent = `Status: Error! ${error.message}`;
   }
+});
 
-  if (startTime < 0 || endTime > trimState.originalDuration) {
-    debug.textContent = 'Статус: Ошибка! Неверный диапазон времени';
-    alert(`Диапазон должен быть от 0 до ${trimState.originalDuration} сек`);
-    return;
+applyFilterBtn.addEventListener('click', () => {
+  const filter = filterSelect.value;
+  try {
+    filterApplier.applyFilter(filter);
+  } catch (error) {
+    debug.textContent = `Status: Error! ${error.message}`;
   }
+});
 
-  trimState.startTime = startTime;
-  trimState.endTime = endTime;
-  trimState.isTrimmed = true;
+applyAudioBtn.addEventListener('click', () => {
+  try {
+    audioOverlay.applyAudio();
+  } catch (error) {
+    debug.textContent = `Status: Error! ${error.message}`;
+  }
+});
 
-  // Обновляем шк му времени
-  const newDuration = endTime - startTime;
-  customTimeline.max = newDuration;
-  customTimeline.value = 0;
-  video.currentTime = startTime;
-  timelineDuration.textContent = `${newDuration} сек`;
+playPauseBtn.addEventListener('click', () => {
+  if (processedVideo.paused) {
+    processedVideo.play();
+    playPauseBtn.textContent = 'Pause';
+  } else {
+    processedVideo.pause();
+    playPauseBtn.textContent = 'Play';
+  }
+});
 
-  debug.textContent = `Статус: Видео обрезано с ${startTime} до ${endTime} сек (длительность ${newDuration} сек)`;
+muteBtn.addEventListener('click', () => {
+  processedVideo.muted = !processedVideo.muted;
+  muteBtn.textContent = processedVideo.muted ? 'Unmute' : 'Mute';
+});
+
+volumeSlider.addEventListener('input', () => {
+  processedVideo.volume = volumeSlider.value;
+});
+
+fullscreenBtn.addEventListener('click', () => {
+  if (processedVideo.requestFullscreen) {
+    processedVideo.requestFullscreen();
+  }
+});
+
+downloadBtn.addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.href = processedVideo.src;
+  link.download = 'edited-video.mp4';
+  link.click();
+});
+
+processedVideo.addEventListener('timeupdate', () => {
+  const current = videoTrimmer.isTrimmed ? processedVideo.currentTime - videoTrimmer.startTime : videoMerger.getCurrentTime();
+  timelineRange.value = current;
+  currentTime.textContent = formatTime(current);
+});
+
+timelineRange.addEventListener('input', () => {
+  const newTime = videoTrimmer.isTrimmed ? videoTrimmer.startTime + parseFloat(timelineRange.value) : videoMerger.seekTo(parseFloat(timelineRange.value));
+  processedVideo.currentTime = newTime;
+});
+
+function formatTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
 }
-
-// Ограничение воспроизведения
-function restrictPlayback() {
-  video.addEventListener('timeupdate', () => {
-    if (trimState.isTrimmed) {
-      if (video.currentTime < trimState.startTime) {
-        video.currentTime = trimState.startTime;
-      }
-      if (video.currentTime >= trimState.endTime) {
-        video.pause();
-        video.currentTime = trimState.startTime;
-      }
-    }
-  });
-}
-
-// Инициализация
-loadVideo();
-syncTimeline();
-restrictPlayback();
-
-applyBtn.addEventListener('click', applyTrim);
