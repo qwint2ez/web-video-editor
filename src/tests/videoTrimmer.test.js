@@ -4,15 +4,13 @@ describe('VideoTrimmer', () => {
   let videoElement, debugElement, timelineRange, currentTime, duration;
 
   beforeEach(() => {
-    // Создаем моковые элементы
     videoElement = document.createElement('video');
-    videoElement.duration = 20; // Длительность видео 20 секунд
+    Object.defineProperty(videoElement, 'duration', { value: 20, configurable: true });
     debugElement = document.createElement('p');
     timelineRange = document.createElement('input');
     timelineRange.type = 'range';
     currentTime = document.createElement('span');
     duration = document.createElement('span');
-
     document.body.appendChild(videoElement);
     document.body.appendChild(debugElement);
     document.body.appendChild(timelineRange);
@@ -39,11 +37,10 @@ describe('VideoTrimmer', () => {
   test('should trim video correctly', () => {
     const trimmer = new VideoTrimmer(videoElement, debugElement, timelineRange, currentTime, duration);
     trimmer.applyTrim(2, 10);
-
     expect(trimmer.isTrimmed).toBe(true);
     expect(trimmer.startTime).toBe(2);
     expect(trimmer.endTime).toBe(10);
-    expect(timelineRange.max).toBe('8'); // 10 - 2 = 8 секунд
+    expect(timelineRange.max).toBe('8');
     expect(duration.textContent).toBe('0:08');
     expect(debugElement.textContent).toBe('Status: Video trimmed from 2 to 10 sec');
   });

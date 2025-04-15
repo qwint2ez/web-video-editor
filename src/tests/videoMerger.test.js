@@ -10,7 +10,6 @@ describe('VideoMerger', () => {
     timelineRange.type = 'range';
     currentTime = document.createElement('span');
     duration = document.createElement('span');
-
     document.body.appendChild(videoElement);
     document.body.appendChild(debugElement);
     document.body.appendChild(timelineRange);
@@ -27,19 +26,21 @@ describe('VideoMerger', () => {
     const mockFile1 = new File([''], 'video1.mp4', { type: 'video/mp4' });
     const mockFile2 = new File([''], 'video2.mp4', { type: 'video/mp4' });
 
-    // Мокаем длительность видео
     const tempVideo1 = document.createElement('video');
-    tempVideo1.src = URL.createObjectURL(mockFile1);
-    Object.defineProperty(tempVideo1, 'duration', { value: 5, writable: true });
-
     const tempVideo2 = document.createElement('video');
-    tempVideo2.src = URL.createObjectURL(mockFile2);
-    Object.defineProperty(tempVideo2, 'duration', { value: 3, writable: true });
+    Object.defineProperty(tempVideo1, 'duration', { value: 5, configurable: true });
+    Object.defineProperty(tempVideo2, 'duration', { value: 3, configurable: true });
+
+    jest.spyOn(document, 'createElement').mockImplementation((tag) => {
+      if (tag === 'video') {
+        return tag === 'video' && mockFile1.name === 'video1.mp4' ? tempVideo1 : tempVideo2;
+      }
+      return document.createElement(tag);
+    });
 
     await merger.mergeVideos([mockFile1, mockFile2]);
-
-    expect(merger.totalDuration).toBe(8); // 5 + 3 = 8 секунд
-    expect(timelineRange.max).toBe(8);
+    expect(merger.totalDuration).toBe(8);
+    expect(timelineRange.max).toBe('8');
     expect(duration.textContent).toBe('0:08');
     expect(debugElement.textContent).toBe('Status: Videos merged');
   });
