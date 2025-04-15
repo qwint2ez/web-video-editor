@@ -10,7 +10,7 @@
 ## Диаграмма классов
 Ниже представлена диаграмма классов, описывающая архитектуру системы.
 
-![Диаграмма классов](https://github.com/qwint2ez/web-video-editor/blob/main/web-video-redactor-uml.png)  
+![Диаграмма классов](https://github.com/qwint2ez/web-video-editor/blob/main/web-video-editor-uml.png)  
 
 ## Функциональные требования (Use Cases)
 
