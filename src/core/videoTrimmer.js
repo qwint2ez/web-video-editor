@@ -1,24 +1,24 @@
 import { VideoProcessor } from './videoProcessor.js';
 
 export class VideoTrimmer extends VideoProcessor {
-    constructor(videoElement, debugElement, timelineRange, currentTime, duration) {
-        super(videoElement, debugElement);
-        this.timelineRange = timelineRange;
-        this.currentTime = currentTime;
-        this.duration = duration;
+    constructor(dependencies) {
+        super(dependencies);
+        this.timelineRange = dependencies.timelineRange;
+        this.currentTime = dependencies.currentTime;
+        this.duration = dependencies.duration;
+        this.playPauseBtn = dependencies.playPauseBtn;
         this.startTime = 0;
         this.endTime = 0;
         this.isTrimmed = false;
     }
 
-    process(startTime, endTime) {
+    process(params) {
+        const { startTime, endTime } = params;
         if (endTime <= startTime) {
-            this.debugElement.textContent = 'Status: Error! End time must be greater than start time';
-            throw new Error('End time must be greater than start time');
+            this.logError('End time must be greater than start time');
         }
         if (startTime < 0 || endTime > this.videoElement.duration) {
-            this.debugElement.textContent = 'Status: Error! Invalid time range';
-            throw new Error('Invalid time range');
+            this.logError('Invalid time range');
         }
 
         this.startTime = startTime;
@@ -35,7 +35,7 @@ export class VideoTrimmer extends VideoProcessor {
                 if (this.videoElement.currentTime >= this.endTime) {
                     this.videoElement.pause();
                     this.videoElement.currentTime = this.startTime;
-                    document.getElementById('playPauseBtn').textContent = 'Play';
+                    this.playPauseBtn.textContent = 'Play';
                 }
                 if (this.videoElement.currentTime < this.startTime) {
                     this.videoElement.currentTime = this.startTime;
@@ -44,12 +44,6 @@ export class VideoTrimmer extends VideoProcessor {
         });
 
         this.debugElement.textContent = `Status: Video trimmed from ${this.startTime} to ${this.endTime} sec`;
-    }
-
-    formatTime(seconds) {
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
     }
 
     get isTrimmedState() {

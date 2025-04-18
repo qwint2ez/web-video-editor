@@ -1,13 +1,15 @@
 import { FilterApplier } from '../core/filterApplier.js';
 
 describe('FilterApplier', () => {
-  let videoElement, debugElement;
+  let dependencies;
 
   beforeEach(() => {
-    videoElement = document.createElement('video');
-    debugElement = document.createElement('p');
-    document.body.appendChild(videoElement);
-    document.body.appendChild(debugElement);
+    dependencies = {
+      videoElement: document.createElement('video'),
+      debugElement: document.createElement('p'),
+    };
+    document.body.appendChild(dependencies.videoElement);
+    document.body.appendChild(dependencies.debugElement);
   });
 
   afterEach(() => {
@@ -15,15 +17,15 @@ describe('FilterApplier', () => {
   });
 
   test('should throw error if no filter is selected', () => {
-    const applier = new FilterApplier(videoElement, debugElement);
-    expect(() => applier.process('')).toThrow('Select a filter');
-    expect(debugElement.textContent).toBe('Status: Error! Select a filter');
+    const applier = new FilterApplier(dependencies);
+    expect(() => applier.process({ filter: '' })).toThrow('Select a valid filter');
+    expect(dependencies.debugElement.textContent).toBe('Status: Error! Select a valid filter');
   });
 
   test('should apply grayscale filter', () => {
-    const applier = new FilterApplier(videoElement, debugElement);
-    applier.process('grayscale');
-    expect(videoElement.style.filter).toBe('grayscale(100%)');
-    expect(debugElement.textContent).toBe('Status: Applied filter grayscale');
+    const applier = new FilterApplier(dependencies);
+    applier.process({ filter: 'grayscale' });
+    expect(dependencies.videoElement.style.filter).toBe('grayscale(100%)');
+    expect(dependencies.debugElement.textContent).toBe('Status: Applied filter grayscale');
   });
 });

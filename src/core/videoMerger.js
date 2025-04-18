@@ -1,11 +1,11 @@
 import { VideoProcessor } from './videoProcessor.js';
 
 export class VideoMerger extends VideoProcessor {
-    constructor(videoElement, debugElement, timelineRange, currentTime, duration) {
-        super(videoElement, debugElement);
-        this.timelineRange = timelineRange;
-        this.currentTime = currentTime;
-        this.duration = duration;
+    constructor(dependencies) {
+        super(dependencies);
+        this.timelineRange = dependencies.timelineRange;
+        this.currentTime = dependencies.currentTime;
+        this.duration = dependencies.duration;
         this.currentIndex = 0;
         this.videos = [];
         this.durations = [];
@@ -13,10 +13,10 @@ export class VideoMerger extends VideoProcessor {
         this.currentTimeOffset = 0;
     }
 
-    async process(videoFiles) {
+    async process(params) {
+        const { videoFiles } = params;
         if (videoFiles.length < 2) {
-            this.debugElement.textContent = 'Status: Error! Select at least two videos';
-            throw new Error('Select at least two videos');
+            this.logError('Select at least two videos');
         }
         this.videos = Array.from(videoFiles);
         this.currentIndex = 0;
@@ -73,11 +73,5 @@ export class VideoMerger extends VideoProcessor {
             }
         }
         return this.videoElement.currentTime;
-    }
-
-    formatTime(seconds) {
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
     }
 }

@@ -1,16 +1,18 @@
 import { TextOverlay } from '../core/textOverlay.js';
 
 describe('TextOverlay', () => {
-  let videoElement, debugElement, textOverlayElement;
+  let dependencies;
 
   beforeEach(() => {
-    videoElement = document.createElement('video');
-    debugElement = document.createElement('p');
-    textOverlayElement = document.createElement('div');
-    textOverlayElement.id = 'textOverlay';
-    document.body.appendChild(videoElement);
-    document.body.appendChild(debugElement);
-    document.body.appendChild(textOverlayElement);
+    dependencies = {
+      videoElement: document.createElement('video'),
+      debugElement: document.createElement('p'),
+      textElement: document.createElement('div'),
+    };
+    dependencies.textElement.id = 'textOverlay';
+    document.body.appendChild(dependencies.videoElement);
+    document.body.appendChild(dependencies.debugElement);
+    document.body.appendChild(dependencies.textElement);
   });
 
   afterEach(() => {
@@ -18,21 +20,21 @@ describe('TextOverlay', () => {
   });
 
   test('should throw error if text is empty', () => {
-    const overlay = new TextOverlay(videoElement, debugElement);
-    expect(() => overlay.process('', 'top-left', '#ffffff', '16')).toThrow('Text field cannot be empty');
-    expect(debugElement.textContent).toBe('Status: Error! Text field cannot be empty');
+    const overlay = new TextOverlay(dependencies);
+    expect(() => overlay.process({ text: '', position: 'top-left', color: '#ffffff', size: '16' })).toThrow('Text field cannot be empty');
+    expect(dependencies.debugElement.textContent).toBe('Status: Error! Text field cannot be empty');
   });
 
   test('should apply text correctly', () => {
-    const overlay = new TextOverlay(videoElement, debugElement);
-    overlay.process('Test Text', 'top-left', '#ff0000', '24');
+    const overlay = new TextOverlay(dependencies);
+    overlay.process({ text: 'Test Text', position: 'top-left', color: '#ff0000', size: '24' });
 
-    expect(textOverlayElement.textContent).toBe('Test Text');
-    expect(textOverlayElement.style.display).toBe('block');
-    expect(textOverlayElement.style.color).toBe('rgb(255, 0, 0)'); // #ff0000
-    expect(textOverlayElement.style.fontSize).toBe('24px');
-    expect(textOverlayElement.style.top).toBe('10px');
-    expect(textOverlayElement.style.left).toBe('10px');
-    expect(debugElement.textContent).toBe('Status: Text "Test Text" added at top-left');
+    expect(dependencies.textElement.textContent).toBe('Test Text');
+    expect(dependencies.textElement.style.display).toBe('block');
+    expect(dependencies.textElement.style.color).toBe('rgb(255, 0, 0)');
+    expect(dependencies.textElement.style.fontSize).toBe('24px');
+    expect(dependencies.textElement.style.top).toBe('10px');
+    expect(dependencies.textElement.style.left).toBe('10px');
+    expect(dependencies.debugElement.textContent).toBe('Status: Text "Test Text" added at top-left');
   });
 });

@@ -1,16 +1,20 @@
 import { AudioOverlay } from '../core/audioOverlay.js';
 
 describe('AudioOverlay', () => {
-  let videoElement, audioInput, debugElement;
+  let dependencies;
 
   beforeEach(() => {
-    videoElement = document.createElement('video');
-    audioInput = document.createElement('input');
-    audioInput.type = 'file';
-    debugElement = document.createElement('p');
-    document.body.appendChild(videoElement);
-    document.body.appendChild(audioInput);
-    document.body.appendChild(debugElement);
+    dependencies = {
+      videoElement: document.createElement('video'),
+      debugElement: document.createElement('p'),
+      audioInput: document.createElement('input'),
+    };
+    dependencies.audioInput.type = 'file';
+    document.body.appendChild(dependencies.videoElement);
+    document.body.appendChild(dependencies.debugElement);
+    document.body.appendChild(dependencies.audioInput);
+
+    global.URL.createObjectURL = jest.fn(() => 'mocked-audio-url');
   });
 
   afterEach(() => {
@@ -19,23 +23,27 @@ describe('AudioOverlay', () => {
   });
 
   test('should throw error if no audio file is selected', () => {
-    const overlay = new AudioOverlay(videoElement, audioInput, debugElement);
-    Object.defineProperty(audioInput, 'files', { value: [], writable: true });
-    expect(() => overlay.process()).toThrow('Select an audio file');
-    expect(debugElement.textContent).toBe('Status: Error! Select an audio file');
+    const overlay = new AudioOverlay(dependencies);
+    Object.defineProperty(dependencies.audioInput, 'files', { value: [], writable: true });
+    expect(() => overlay.process({})).toThrow('Select an audio file');
+    expect(dependencies.debugElement.textContent).toBe('Status: Error! Select an audio file');
   });
 
   test('should apply audio correctly', () => {
-    const overlay = new AudioOverlay(videoElement, audioInput, debugElement);
+    const overlay = new AudioOverlay(dependencies);
     const mockFile = new File([''], 'audio.mp3', { type: 'audio/mp3' });
-    Object.defineProperty(audioInput, 'files', { value: [mockFile], writable: true });
-    global.URL.createObjectURL = jest.fn(() => 'mocked-audio-url');
+    Object.defineProperty(dependencies.audioInput, 'files', { value: [mockFile], writable: true });
     jest.spyOn(window, 'Audio').mockImplementation(() => ({
       src: '',
+      loop: false,
+      play: jest.fn(),
+      pause: jest.fn(),
       addEventListener: jest.fn(),
     }));
-    overlay.process();
+
+    overlay.process({});
     expect(overlay.audio).not.toBeNull();
-    expect(debugElement.textContent).toBe('Status: Audio applied');
+    expect(overlay.audio.loop).toBe(true);
+    expect(dependencies.debugElement.textContent).toBe('Status: Audio applied');
   });
 });

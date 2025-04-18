@@ -1,134 +1,102 @@
-import { VideoTrimmer } from '../core/videoTrimmer.js';
-import { FilterApplier } from '../core/filterApplier.js';
-import { TextOverlay } from '../core/textOverlay.js';
-import { VideoMerger } from '../core/videoMerger.js';
-import { AudioOverlay } from '../core/audioOverlay.js';
-import { VideoLoader } from '../core/videoLoader.js';
+import { VideoEditor } from '../core/videoEditor.js';
 
-const videoInput = document.getElementById('videoInput');
-const audioInput = document.getElementById('audioInput');
-const processedVideo = document.getElementById('processedVideo');
-const debug = document.getElementById('debug');
-const startInput = document.getElementById('start');
-const endInput = document.getElementById('end');
-const applyTrimBtn = document.getElementById('applyTrimBtn');
-const textInput = document.getElementById('textInput');
-const textPosition = document.getElementById('textPosition');
-const textColor = document.getElementById('textColor');
-const textSize = document.getElementById('textSize');
-const applyTextBtn = document.getElementById('applyTextBtn');
-const filterSelect = document.getElementById('filterSelect');
-const applyFilterBtn = document.getElementById('applyFilterBtn');
-const applyAudioBtn = document.getElementById('applyAudioBtn');
-const playPauseBtn = document.getElementById('playPauseBtn');
-const muteBtn = document.getElementById('muteBtn');
-const volumeSlider = document.getElementById('volumeSlider');
-const fullscreenBtn = document.getElementById('fullscreenBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const timelineRange = document.getElementById('timelineRange');
-const currentTime = document.getElementById('currentTime');
-const duration = document.getElementById('duration');
+const dependencies = {
+    videoElement: document.getElementById('processedVideo'),
+    debugElement: document.getElementById('debug'),
+    audioInput: document.getElementById('audioInput'),
+    inputElement: document.getElementById('videoInput'),
+    textElement: document.getElementById('textOverlay'),
+    timelineRange: document.getElementById('timelineRange'),
+    currentTime: document.getElementById('currentTime'),
+    duration: document.getElementById('duration'),
+    playPauseBtn: document.getElementById('playPauseBtn'),
+    endInput: document.getElementById('end'),
+    startInput: document.getElementById('start'),
+};
 
-let currentVideoFiles = [];
+const videoEditor = new VideoEditor(dependencies);
 
-const videoLoader = new VideoLoader(videoInput, processedVideo, debug);
-const videoTrimmer = new VideoTrimmer(processedVideo, debug, timelineRange, currentTime, duration);
-const filterApplier = new FilterApplier(processedVideo, debug);
-const textOverlay = new TextOverlay(processedVideo, debug);
-const videoMerger = new VideoMerger(processedVideo, debug, timelineRange, currentTime, duration);
-const audioOverlay = new AudioOverlay(processedVideo, audioInput, debug);
-
-videoInput.addEventListener('change', (e) => {
-    currentVideoFiles = Array.from(e.target.files);
-    if (currentVideoFiles.length > 1) {
-        videoMerger.process(currentVideoFiles);
-    }
+document.getElementById('videoInput').addEventListener('change', (e) => {
+    videoEditor.loadVideos(e.target.files);
 });
 
-applyTrimBtn.addEventListener('click', () => {
-    const startTime = parseFloat(startInput.value);
-    const endTime = parseFloat(endInput.value);
+document.getElementById('applyTrimBtn').addEventListener('click', () => {
+    const startTime = parseFloat(document.getElementById('start').value);
+    const endTime = parseFloat(document.getElementById('end').value);
     try {
-        videoTrimmer.process(startTime, endTime);
+        videoEditor.applyTrim(startTime, endTime);
     } catch (error) {
-        debug.textContent = `Status: Error! ${error.message}`;
+        dependencies.debugElement.textContent = `Status: Error! ${error.message}`;
     }
 });
 
-applyTextBtn.addEventListener('click', () => {
-    const text = textInput.value;
-    const position = textPosition.value;
-    const color = textColor.value;
-    const size = textSize.value;
+document.getElementById('applyTextBtn').addEventListener('click', () => {
+    const text = document.getElementById('textInput').value;
+    const position = document.getElementById('textPosition').value;
+    const color = document.getElementById('textColor').value;
+    const size = document.getElementById('textSize').value;
     try {
-        textOverlay.process(text, position, color, size);
+        videoEditor.applyText(text, position, color, size);
     } catch (error) {
-        debug.textContent = `Status: Error! ${error.message}`;
+        dependencies.debugElement.textContent = `Status: Error! ${error.message}`;
     }
 });
 
-applyFilterBtn.addEventListener('click', () => {
-    const filter = filterSelect.value;
+document.getElementById('applyFilterBtn').addEventListener('click', () => {
+    const filter = document.getElementById('filterSelect').value;
     try {
-        filterApplier.process(filter);
+        videoEditor.applyFilter(filter);
     } catch (error) {
-        debug.textContent = `Status: Error! ${error.message}`;
+        dependencies.debugElement.textContent = `Status: Error! ${error.message}`;
     }
 });
 
-applyAudioBtn.addEventListener('click', () => {
+document.getElementById('applyAudioBtn').addEventListener('click', () => {
     try {
-        audioOverlay.process();
+        videoEditor.applyAudio();
     } catch (error) {
-        debug.textContent = `Status: Error! ${error.message}`;
+        dependencies.debugElement.textContent = `Status: Error! ${error.message}`;
     }
 });
 
-playPauseBtn.addEventListener('click', () => {
-    if (processedVideo.paused) {
-        processedVideo.play();
-        playPauseBtn.textContent = 'Pause';
+document.getElementById('playPauseBtn').addEventListener('click', () => {
+    if (dependencies.videoElement.paused) {
+        dependencies.videoElement.play();
+        dependencies.playPauseBtn.textContent = 'Pause';
     } else {
-        processedVideo.pause();
-        playPauseBtn.textContent = 'Play';
+        dependencies.videoElement.pause();
+        dependencies.playPauseBtn.textContent = 'Play';
     }
 });
 
-muteBtn.addEventListener('click', () => {
-    processedVideo.muted = !processedVideo.muted;
-    muteBtn.textContent = processedVideo.muted ? 'Unmute' : 'Mute';
+document.getElementById('muteBtn').addEventListener('click', () => {
+    dependencies.videoElement.muted = !dependencies.videoElement.muted;
+    document.getElementById('muteBtn').textContent = dependencies.videoElement.muted ? 'Unmute' : 'Mute';
 });
 
-volumeSlider.addEventListener('input', () => {
-    processedVideo.volume = volumeSlider.value;
+document.getElementById('volumeSlider').addEventListener('input', () => {
+    dependencies.videoElement.volume = document.getElementById('volumeSlider').value;
 });
 
-fullscreenBtn.addEventListener('click', () => {
-    if (processedVideo.requestFullscreen) {
-        processedVideo.requestFullscreen();
+document.getElementById('fullscreenBtn').addEventListener('click', () => {
+    if (dependencies.videoElement.requestFullscreen) {
+        dependencies.videoElement.requestFullscreen();
     }
 });
 
-downloadBtn.addEventListener('click', () => {
+document.getElementById('downloadBtn').addEventListener('click', () => {
     const link = document.createElement('a');
-    link.href = processedVideo.src;
+    link.href = dependencies.videoElement.src;
     link.download = 'edited-video.mp4';
     link.click();
 });
 
-processedVideo.addEventListener('timeupdate', () => {
-    const current = videoTrimmer.isTrimmedState ? processedVideo.currentTime - videoTrimmer.startTimeValue : videoMerger.getCurrentTime();
-    timelineRange.value = current;
-    currentTime.textContent = formatTime(current);
+dependencies.videoElement.addEventListener('timeupdate', () => {
+    const current = videoEditor.getCurrentTime();
+    dependencies.timelineRange.value = current;
+    dependencies.currentTime.textContent = videoEditor.formatTime(current);
 });
 
-timelineRange.addEventListener('input', () => {
-    const newTime = videoTrimmer.isTrimmedState ? videoTrimmer.startTimeValue + parseFloat(timelineRange.value) : videoMerger.seekTo(parseFloat(timelineRange.value));
-    processedVideo.currentTime = newTime;
+dependencies.timelineRange.addEventListener('input', () => {
+    videoEditor.seekTo(parseFloat(dependencies.timelineRange.value));
 });
-
-function formatTime(seconds) {
-    const minutes = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
-}

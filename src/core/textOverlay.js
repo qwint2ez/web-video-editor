@@ -1,15 +1,15 @@
 import { VideoProcessor } from './videoProcessor.js';
 
 export class TextOverlay extends VideoProcessor {
-    constructor(videoElement, debugElement) {
-        super(videoElement, debugElement);
-        this.textElement = document.getElementById('textOverlay');
+    constructor(dependencies) {
+        super(dependencies);
+        this.textElement = dependencies.textElement;
     }
 
-    process(text, position, color, size) {
+    process(params) {
+        const { text, position, color, size } = params;
         if (!text) {
-            this.debugElement.textContent = 'Status: Error! Text field cannot be empty';
-            throw new Error('Text field cannot be empty');
+            this.logError('Text field cannot be empty');
         }
 
         this.textElement.textContent = text;

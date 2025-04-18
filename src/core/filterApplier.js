@@ -1,21 +1,26 @@
 import { VideoProcessor } from './videoProcessor.js';
 
 export class FilterApplier extends VideoProcessor {
-    process(filter) {
-        if (!filter) {
-            this.debugElement.textContent = 'Status: Error! Select a filter';
-            throw new Error('Select a filter');
+    constructor(dependencies) {
+        super(dependencies);
+        this.filters = {
+            grayscale: () => 'grayscale(100%)',
+            sepia: () => 'sepia(100%)',
+            invert: () => 'invert(100%)',
+        };
+    }
+
+    process(params) {
+        const { filter } = params;
+        if (!filter || !this.filters[filter]) {
+            this.logError('Select a valid filter');
         }
 
-        this.videoElement.style.filter = '';
-        if (filter === 'grayscale') {
-            this.videoElement.style.filter = 'grayscale(100%)';
-        } else if (filter === 'sepia') {
-            this.videoElement.style.filter = 'sepia(100%)';
-        } else if (filter === 'invert') {
-            this.videoElement.style.filter = 'invert(100%)';
-        }
-
+        this.videoElement.style.filter = this.filters[filter]();
         this.debugElement.textContent = `Status: Applied filter ${filter}`;
+    }
+
+    registerFilter(name, filterFunction) {
+        this.filters[name] = filterFunction;
     }
 }

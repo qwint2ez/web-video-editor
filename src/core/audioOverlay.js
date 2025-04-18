@@ -1,17 +1,16 @@
 import { VideoProcessor } from './videoProcessor.js';
 
 export class AudioOverlay extends VideoProcessor {
-    constructor(videoElement, audioInput, debugElement) {
-        super(videoElement, debugElement);
-        this.audioInput = audioInput;
+    constructor(dependencies) {
+        super(dependencies);
+        this.audioInput = dependencies.audioInput;
         this.audio = null;
     }
 
-    process() {
+    process(params) {
         const audioFile = this.audioInput.files[0];
         if (!audioFile) {
-            this.debugElement.textContent = 'Status: Error! Select an audio file';
-            throw new Error('Select an audio file');
+            this.logError('Select an audio file');
         }
 
         if (this.audio) {
