@@ -1,8 +1,9 @@
-import { VideoTrimmer } from './videoTrimmer.js';
-import { FilterApplier } from './filterApplier.js';
-import { TextOverlay } from './textOverlay.js';
-import { VideoMerger } from './videoMerger.js';
-import { AudioOverlay } from './audioOverlay.js';
+import { VideoTrimmer } from '../core/videoTrimmer.js';
+import { FilterApplier } from '../core/filterApplier.js';
+import { TextOverlay } from '../core/textOverlay.js';
+import { VideoMerger } from '../core/videoMerger.js';
+import { AudioOverlay } from '../core/audioOverlay.js';
+import { VideoLoader } from '../core/videoLoader.js';
 
 const videoInput = document.getElementById('videoInput');
 const audioInput = document.getElementById('audioInput');
