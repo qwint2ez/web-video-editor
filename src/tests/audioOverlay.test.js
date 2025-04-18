@@ -21,7 +21,7 @@ describe('AudioOverlay', () => {
   test('should throw error if no audio file is selected', () => {
     const overlay = new AudioOverlay(videoElement, audioInput, debugElement);
     Object.defineProperty(audioInput, 'files', { value: [], writable: true });
-    expect(() => overlay.applyAudio()).toThrow('Select an audio file');
+    expect(() => overlay.process()).toThrow('Select an audio file');
     expect(debugElement.textContent).toBe('Status: Error! Select an audio file');
   });
 
@@ -34,7 +34,7 @@ describe('AudioOverlay', () => {
       src: '',
       addEventListener: jest.fn(),
     }));
-    overlay.applyAudio();
+    overlay.process();
     expect(overlay.audio).not.toBeNull();
     expect(debugElement.textContent).toBe('Status: Audio applied');
   });

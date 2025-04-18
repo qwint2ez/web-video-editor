@@ -31,110 +31,104 @@ const duration = document.getElementById('duration');
 
 let currentVideoFiles = [];
 
-videoInput.addEventListener('change', (e) => {
-  currentVideoFiles = Array.from(e.target.files);
-  if (currentVideoFiles.length === 1) {
-    processedVideo.src = URL.createObjectURL(currentVideoFiles[0]);
-    processedVideo.onloadedmetadata = () => {
-      timelineRange.max = processedVideo.duration;
-      duration.textContent = formatTime(processedVideo.duration);
-      debug.textContent = 'Status: Video loaded';
-    };
-  } else if (currentVideoFiles.length > 1) {
-    videoMerger.mergeVideos(currentVideoFiles);
-  }
-});
-
+const videoLoader = new VideoLoader(videoInput, processedVideo, debug);
 const videoTrimmer = new VideoTrimmer(processedVideo, debug, timelineRange, currentTime, duration);
 const filterApplier = new FilterApplier(processedVideo, debug);
 const textOverlay = new TextOverlay(processedVideo, debug);
 const videoMerger = new VideoMerger(processedVideo, debug, timelineRange, currentTime, duration);
 const audioOverlay = new AudioOverlay(processedVideo, audioInput, debug);
 
+videoInput.addEventListener('change', (e) => {
+    currentVideoFiles = Array.from(e.target.files);
+    if (currentVideoFiles.length > 1) {
+        videoMerger.process(currentVideoFiles);
+    }
+});
+
 applyTrimBtn.addEventListener('click', () => {
-  const startTime = parseFloat(startInput.value);
-  const endTime = parseFloat(endInput.value);
-  try {
-    videoTrimmer.applyTrim(startTime, endTime);
-  } catch (error) {
-    debug.textContent = `Status: Error! ${error.message}`;
-  }
+    const startTime = parseFloat(startInput.value);
+    const endTime = parseFloat(endInput.value);
+    try {
+        videoTrimmer.process(startTime, endTime);
+    } catch (error) {
+        debug.textContent = `Status: Error! ${error.message}`;
+    }
 });
 
 applyTextBtn.addEventListener('click', () => {
-  const text = textInput.value;
-  const position = textPosition.value;
-  const color = textColor.value;
-  const size = textSize.value;
-  try {
-    textOverlay.applyText(text, position, color, size);
-  } catch (error) {
-    debug.textContent = `Status: Error! ${error.message}`;
-  }
+    const text = textInput.value;
+    const position = textPosition.value;
+    const color = textColor.value;
+    const size = textSize.value;
+    try {
+        textOverlay.process(text, position, color, size);
+    } catch (error) {
+        debug.textContent = `Status: Error! ${error.message}`;
+    }
 });
 
 applyFilterBtn.addEventListener('click', () => {
-  const filter = filterSelect.value;
-  try {
-    filterApplier.applyFilter(filter);
-  } catch (error) {
-    debug.textContent = `Status: Error! ${error.message}`;
-  }
+    const filter = filterSelect.value;
+    try {
+        filterApplier.process(filter);
+    } catch (error) {
+        debug.textContent = `Status: Error! ${error.message}`;
+    }
 });
 
 applyAudioBtn.addEventListener('click', () => {
-  try {
-    audioOverlay.applyAudio();
-  } catch (error) {
-    debug.textContent = `Status: Error! ${error.message}`;
-  }
+    try {
+        audioOverlay.process();
+    } catch (error) {
+        debug.textContent = `Status: Error! ${error.message}`;
+    }
 });
 
 playPauseBtn.addEventListener('click', () => {
-  if (processedVideo.paused) {
-    processedVideo.play();
-    playPauseBtn.textContent = 'Pause';
-  } else {
-    processedVideo.pause();
-    playPauseBtn.textContent = 'Play';
-  }
+    if (processedVideo.paused) {
+        processedVideo.play();
+        playPauseBtn.textContent = 'Pause';
+    } else {
+        processedVideo.pause();
+        playPauseBtn.textContent = 'Play';
+    }
 });
 
 muteBtn.addEventListener('click', () => {
-  processedVideo.muted = !processedVideo.muted;
-  muteBtn.textContent = processedVideo.muted ? 'Unmute' : 'Mute';
+    processedVideo.muted = !processedVideo.muted;
+    muteBtn.textContent = processedVideo.muted ? 'Unmute' : 'Mute';
 });
 
 volumeSlider.addEventListener('input', () => {
-  processedVideo.volume = volumeSlider.value;
+    processedVideo.volume = volumeSlider.value;
 });
 
 fullscreenBtn.addEventListener('click', () => {
-  if (processedVideo.requestFullscreen) {
-    processedVideo.requestFullscreen();
-  }
+    if (processedVideo.requestFullscreen) {
+        processedVideo.requestFullscreen();
+    }
 });
 
 downloadBtn.addEventListener('click', () => {
-  const link = document.createElement('a');
-  link.href = processedVideo.src;
-  link.download = 'edited-video.mp4';
-  link.click();
+    const link = document.createElement('a');
+    link.href = processedVideo.src;
+    link.download = 'edited-video.mp4';
+    link.click();
 });
 
 processedVideo.addEventListener('timeupdate', () => {
-  const current = videoTrimmer.isTrimmed ? processedVideo.currentTime - videoTrimmer.startTime : videoMerger.getCurrentTime();
-  timelineRange.value = current;
-  currentTime.textContent = formatTime(current);
+    const current = videoTrimmer.isTrimmedState ? processedVideo.currentTime - videoTrimmer.startTimeValue : videoMerger.getCurrentTime();
+    timelineRange.value = current;
+    currentTime.textContent = formatTime(current);
 });
 
 timelineRange.addEventListener('input', () => {
-  const newTime = videoTrimmer.isTrimmed ? videoTrimmer.startTime + parseFloat(timelineRange.value) : videoMerger.seekTo(parseFloat(timelineRange.value));
-  processedVideo.currentTime = newTime;
+    const newTime = videoTrimmer.isTrimmedState ? videoTrimmer.startTimeValue + parseFloat(timelineRange.value) : videoMerger.seekTo(parseFloat(timelineRange.value));
+    processedVideo.currentTime = newTime;
 });
 
 function formatTime(seconds) {
-  const minutes = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
 }

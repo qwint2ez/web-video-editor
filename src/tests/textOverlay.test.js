@@ -19,13 +19,13 @@ describe('TextOverlay', () => {
 
   test('should throw error if text is empty', () => {
     const overlay = new TextOverlay(videoElement, debugElement);
-    expect(() => overlay.applyText('', 'top-left', '#ffffff', '16')).toThrow('Text field cannot be empty');
+    expect(() => overlay.process('', 'top-left', '#ffffff', '16')).toThrow('Text field cannot be empty');
     expect(debugElement.textContent).toBe('Status: Error! Text field cannot be empty');
   });
 
   test('should apply text correctly', () => {
     const overlay = new TextOverlay(videoElement, debugElement);
-    overlay.applyText('Test Text', 'top-left', '#ff0000', '24');
+    overlay.process('Test Text', 'top-left', '#ff0000', '24');
 
     expect(textOverlayElement.textContent).toBe('Test Text');
     expect(textOverlayElement.style.display).toBe('block');
