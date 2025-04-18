@@ -15,6 +15,7 @@ describe('AudioOverlay', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    jest.restoreAllMocks();
   });
 
   test('should throw error if no audio file is selected', () => {
@@ -28,6 +29,11 @@ describe('AudioOverlay', () => {
     const overlay = new AudioOverlay(videoElement, audioInput, debugElement);
     const mockFile = new File([''], 'audio.mp3', { type: 'audio/mp3' });
     Object.defineProperty(audioInput, 'files', { value: [mockFile], writable: true });
+    global.URL.createObjectURL = jest.fn(() => 'mocked-audio-url');
+    jest.spyOn(window, 'Audio').mockImplementation(() => ({
+      src: '',
+      addEventListener: jest.fn(),
+    }));
     overlay.applyAudio();
     expect(overlay.audio).not.toBeNull();
     expect(debugElement.textContent).toBe('Status: Audio applied');

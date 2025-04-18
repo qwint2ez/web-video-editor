@@ -8,23 +8,23 @@ export class VideoLoader {
 
   bindEvents() {
     this.inputElement.addEventListener('change', (e) => {
-      this.debugElement.textContent = 'Статус: Загружаем видео...';
+      this.debugElement.textContent = 'Status: Loading video...';
       const file = e.target.files[0];
       if (file) {
         const videoURL = URL.createObjectURL(file);
         this.videoElement.src = videoURL;
         this.videoElement.onloadedmetadata = () => {
-          this.debugElement.textContent = `Статус: Видео загружено, длительность ${this.videoElement.duration} сек`;
+          this.debugElement.textContent = `Status: Video loaded, duration ${this.videoElement.duration} sec`;
           const endInput = document.getElementById('end');
           endInput.max = this.videoElement.duration;
           endInput.value = this.videoElement.duration;
           document.getElementById('start').value = 0;
         };
         this.videoElement.onerror = () => {
-          this.debugElement.textContent = 'Статус: Ошибка загрузки видео!';
+          this.debugElement.textContent = 'Status: Error loading video!';
         };
       } else {
-        this.debugElement.textContent = 'Статус: Файл не выбран!';
+        this.debugElement.textContent = 'Status: File is not selected!';
       }
     });
   }
