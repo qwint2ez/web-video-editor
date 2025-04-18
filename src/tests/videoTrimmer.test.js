@@ -1,4 +1,4 @@
-import { VideoTrimmer } from '../videoTrimmer.js';
+import { VideoTrimmer } from '../core/videoTrimmer.js';
 
 describe('VideoTrimmer', () => {
   let videoElement, debugElement, timelineRange, currentTime, duration;

@@ -1,4 +1,4 @@
-import { FilterApplier } from '../filterApplier.js';
+import { FilterApplier } from '../core/filterApplier.js';
 
 describe('FilterApplier', () => {
   let videoElement, debugElement;

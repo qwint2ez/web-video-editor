@@ -1,4 +1,4 @@
-import { TextOverlay } from '../textOverlay.js';
+import { TextOverlay } from '../core/textOverlay.js';
 
 describe('TextOverlay', () => {
   let videoElement, debugElement, textOverlayElement;

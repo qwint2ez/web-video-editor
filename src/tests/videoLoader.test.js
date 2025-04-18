@@ -1,4 +1,4 @@
-import { VideoLoader } from '../videoLoader.js';
+import { VideoLoader } from '../core/videoLoader.js';
 
 describe('VideoLoader', () => {
   let videoElement, debugElement;

@@ -1,4 +1,4 @@
-import { VideoMerger } from '../videoMerger.js';
+import { VideoMerger } from '../core/videoMerger.js';
 
 describe('VideoMerger', () => {
   let videoElement, debugElement, timelineRange, currentTime, duration;

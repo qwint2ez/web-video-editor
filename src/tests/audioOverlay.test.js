@@ -1,4 +1,4 @@
-import { AudioOverlay } from '../audioOverlay.js';
+import { AudioOverlay } from '../core/audioOverlay.js';
 
 describe('AudioOverlay', () => {
   let videoElement, audioInput, debugElement;
