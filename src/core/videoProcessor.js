@@ -5,12 +5,15 @@ export class VideoProcessor {
     }
 
     process(params) {
-        throw new Error('Method "process" must be implemented by subclass');
+        console.warn('Default process method called');
+        return Promise.resolve();
     }
 
     logError(message) {
-        this.debugElement.textContent = `Status: Error! ${message}`;
-        throw new Error(message);
+        if (this.debugElement) {
+            this.debugElement.textContent = `Status: Error! ${message}`;
+        }
+        console.error(message);
     }
 
     formatTime(seconds) {

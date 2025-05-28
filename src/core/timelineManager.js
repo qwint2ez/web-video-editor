@@ -48,4 +48,21 @@ export class TimelineManager {
             video.src = URL.createObjectURL(file);
         });
     }
+
+    createTimelineSegment(video, duration) {
+        const segment = document.createElement('div');
+        segment.className = 'timeline-segment';
+        segment.style.width = `${(duration / this.totalDuration) * 100}%`;
+        const url = URL.createObjectURL(video);
+        segment.style.backgroundImage = `url(${url})`;
+        return segment;
+    }
+    
+    updateTimeCursor(currentTime) {
+        const cursor = document.querySelector('.timeline-cursor');
+        if (cursor) {
+            const position = (currentTime / this.totalDuration) * 100;
+            cursor.style.left = `${position}%`;
+        }
+    }
 }

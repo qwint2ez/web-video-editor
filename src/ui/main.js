@@ -1,36 +1,167 @@
 import { VideoEditor } from '../core/videoEditor.js';
 
-const dependencies = {
+// State management
+const state = {
+    uploadedVideos: [],
+    videoEditor: null
+};
+
+// Единый объект для всех DOM элементов
+const elements = {
     videoElement: document.getElementById('processedVideo'),
     debugElement: document.getElementById('debug'),
-    audioInput: document.getElementById('audioInput'),
-    inputElement: document.getElementById('videoInput'),
-    textElement: document.getElementById('textOverlay'),
+    textOverlay: document.getElementById('textOverlay'),
+    timelineBar: document.getElementById('timelineBar'),
     timelineRange: document.getElementById('timelineRange'),
     currentTime: document.getElementById('currentTime'),
     duration: document.getElementById('duration'),
+    
+    // Кнопки управления
     playPauseBtn: document.getElementById('playPauseBtn'),
-    endInput: document.getElementById('end'),
+    muteBtn: document.getElementById('muteBtn'),
+    downloadBtn: document.getElementById('downloadBtn'),
+    
+    // Контролы редактирования
+    videoInput: document.getElementById('videoInput'),
+    audioInput: document.getElementById('audioInput'),
     startInput: document.getElementById('start'),
+    endInput: document.getElementById('end'),
+    addToTimelineBtn: document.getElementById('addToTimelineBtn'),
+    
+    // Контейнеры
+    uploadedVideosSection: document.getElementById('uploadedVideosSection'),
+    uploadedVideosList: document.getElementById('uploadedVideosList'),
+    editorContainer: document.querySelector('.editor-container'),
+    controlsContainer: document.querySelector('.controls-container'),
+    videoContainer: document.querySelector('.video-container'),
+    timelineContainer: document.querySelector('.timeline-container'),
+    controlsSection: document.querySelector('.controls-section'),
+
+    // Ползунок громкости
+    volumeSlider: document.getElementById('volumeSlider')
 };
 
-const videoEditor = new VideoEditor(dependencies);
+// Инициализация плеера
+function initializePlayerControls() {
+    if (elements.playPauseBtn) {
+        elements.playPauseBtn.addEventListener('click', () => {
+            const merger = state.videoEditor.processors.merger;
+            if (merger) {
+                merger.togglePlay();
+            }
+        });
+    }
 
-// State for uploaded videos and timeline selection
-const uploadedVideos = [];
-let timelineVideos = [];
+    if (elements.downloadBtn) {
+        elements.downloadBtn.addEventListener('click', async () => {
+            try {
+                utils.showStatus('Подготовка и объединение видео...');
+                const merger = state.videoEditor.processors.merger;
+                
+                if (!merger || !merger.videos.length) {
+                    throw new Error('Нет видео для скачивания');
+                }
 
-// UI elements for new features
-const uploadedVideosSection = document.getElementById('uploadedVideosSection');
-const uploadedVideosList = document.getElementById('uploadedVideosList');
-const addToTimelineBtn = document.getElementById('addToTimelineBtn');
-const timelineVisualization = document.getElementById('timelineVisualization');
-const timelineBar = document.getElementById('timelineBar');
+                // Объединяем видео и скачиваем
+                const videoBlob = await merger.exportVideo();
+                const url = URL.createObjectURL(videoBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'merged-video.mp4';
+                link.click();
+                URL.revokeObjectURL(url);
+                
+                utils.showStatus('Видео успешно скачано');
+            } catch (error) {
+                utils.showError('Ошибка при скачивании: ' + error.message);
+            }
+        });
+    }
+}
 
-// Helper: Render uploaded videos list with checkboxes and drag handles
+// Вспомогательные функции
+const utils = {
+    showError: (message) => {
+        elements.debugElement.textContent = `Статус: Ошибка! ${message}`;
+    },
+    showStatus: (message) => {
+        elements.debugElement.textContent = `Статус: ${message}`;
+    },
+    showElement: (element) => element?.classList.remove('hidden'),
+    hideElement: (element) => element?.classList.add('hidden')
+};
+
+// Функции обновления UI
+function updateTimelineProgress() {
+    const current = state.videoEditor.getCurrentTime();
+    const duration = elements.videoElement?.duration || 0;
+    const progress = document.querySelector('.timeline-progress');
+    
+    if (progress && duration > 0) {
+        progress.style.width = `${(current / duration) * 100}%`;
+    }
+    
+    if (elements.currentTime) {
+        elements.currentTime.textContent = state.videoEditor.formatTime(current);
+    }
+    
+    if (elements.timelineRange) {
+        elements.timelineRange.value = current.toString();
+    }
+}
+
+function renderTimelineBar(videoDurations) {
+    const timelineBar = elements.timelineBar;
+    if (!timelineBar) return;
+    
+    timelineBar.innerHTML = '';
+    
+    // Создаем индикатор прогресса
+    const progress = document.createElement('div');
+    progress.className = 'timeline-progress';
+    timelineBar.appendChild(progress);
+    
+    const colors = ['#74b9ff', '#55efc4', '#ffeaa7', '#fd79a8', '#fab1a0', '#a29bfe', '#fdcb6e'];
+    const total = videoDurations.reduce((a, b) => a + b, 0);
+    
+    let currentPosition = 0;
+    videoDurations.forEach((dur, idx) => {
+        const seg = document.createElement('div');
+        seg.className = 'timeline-segment';
+        const width = (dur / total) * 100;
+        seg.style.width = `${width}%`;
+        seg.style.left = `${currentPosition}%`;
+        seg.style.background = colors[idx % colors.length];
+        currentPosition += width;
+        
+        const videoInfo = state.uploadedVideos[idx];
+        if (videoInfo) {
+            seg.title = `${videoInfo.name}\nДлительность: ${Math.round(dur)}с`;
+        }
+        
+        timelineBar.appendChild(seg);
+    });
+}
+
+// Обработчики событий
+function handleVideoUpload(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    
+    state.uploadedVideos.length = 0;
+    files.forEach(file => {
+        state.uploadedVideos.push({ file, name: file.name, selected: true });
+    });
+    
+    utils.showElement(elements.uploadedVideosSection);
+    renderUploadedVideosList();
+}
+
 function renderUploadedVideosList() {
-    uploadedVideosList.innerHTML = '';
-    uploadedVideos.forEach((file, idx) => {
+    if (!elements.uploadedVideosList) return;
+    elements.uploadedVideosList.innerHTML = '';
+    
+    state.uploadedVideos.forEach((file, idx) => {
         const li = document.createElement('li');
         li.draggable = true;
         li.dataset.idx = idx;
@@ -47,8 +178,8 @@ function renderUploadedVideosList() {
 
         // Drag handle
         li.addEventListener('dragstart', (e) => {
-            li.classList.add('dragging');
             e.dataTransfer.setData('text/plain', idx);
+            li.classList.add('dragging');
         });
         li.addEventListener('dragend', () => {
             li.classList.remove('dragging');
@@ -66,155 +197,198 @@ function renderUploadedVideosList() {
             const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
             const toIdx = idx;
             if (fromIdx !== toIdx) {
-                const moved = uploadedVideos.splice(fromIdx, 1)[0];
-                uploadedVideos.splice(toIdx, 0, moved);
+                const moved = state.uploadedVideos.splice(fromIdx, 1)[0];
+                state.uploadedVideos.splice(toIdx, 0, moved);
+                
+                // Обновляем порядок в VideoMerger
+                if (state.videoEditor?.processors.merger) {
+                    state.videoEditor.processors.merger.reorderVideos(fromIdx, toIdx);
+                }
+                
                 renderUploadedVideosList();
             }
         });
 
         li.appendChild(checkbox);
         li.appendChild(label);
-        uploadedVideosList.appendChild(li);
+        elements.uploadedVideosList.appendChild(li);
     });
 }
 
-// Helper: Render timeline visualization
-function renderTimelineBar(videoDurations) {
-    timelineBar.innerHTML = '';
-    const colors = ['#74b9ff', '#55efc4', '#ffeaa7', '#fd79a8', '#fab1a0', '#a29bfe', '#fdcb6e'];
-    const total = videoDurations.reduce((a, b) => a + b, 0);
-    
-    videoDurations.forEach((dur, idx) => {
-        const seg = document.createElement('div');
-        seg.className = 'timeline-segment';
-        seg.style.width = `${(dur / total) * 100}%`;
-        seg.style.background = colors[idx % colors.length];
-        
-        // Добавляем информацию о видео при наведении
-        const videoInfo = uploadedVideos[idx];
-        seg.title = `${videoInfo.name}\nДлительность: ${Math.round(dur)}с`;
-        
-        // Добавляем возможность удаления видео по двойному клику
-        seg.addEventListener('dblclick', () => {
-            if (confirm(`Удалить видео "${videoInfo.name}" из таймлайна?`)) {
-                uploadedVideos[idx].selected = false;
-                timelineVideos = timelineVideos.filter((_, i) => i !== idx);
-                videoEditor.loadVideos(timelineVideos);
-                renderTimelineBar(videoDurations.filter((_, i) => i !== idx));
-            }
-        });
-        
-        timelineBar.appendChild(seg);
-    });
-}
-
-// Handle video uploads
-document.getElementById('videoInput').addEventListener('change', (e) => {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
-        uploadedVideos.push({ file, name: file.name, selected: false });
-    });
-    uploadedVideosSection.classList.remove('hidden');
-    renderUploadedVideosList();
-});
-
-// Add selected videos to timeline (in order)
-addToTimelineBtn.addEventListener('click', async () => {
-    timelineVideos = uploadedVideos.filter(v => v.selected).map(v => v.file);
-    if (timelineVideos.length === 0) {
-        dependencies.debugElement.textContent = 'Статус: Выберите хотя бы одно видео';
+async function handleAddToTimeline() {
+    const selectedVideos = state.uploadedVideos.filter(v => v.selected);
+    if (!selectedVideos.length) {
+        utils.showError('Выберите хотя бы одно видео');
         return;
     }
 
-    dependencies.debugElement.textContent = 'Статус: Загрузка видео...';
+    utils.showStatus('Загрузка видео...');
     try {
-        await videoEditor.loadVideos(timelineVideos);
-        const durations = videoEditor.timeline.videos.map(v => v.duration);
-        timelineVisualization.classList.remove('hidden');
-        renderTimelineBar(durations);
-        dependencies.debugElement.textContent = 'Статус: Видео загружены успешно';
+        // Показываем все необходимые элементы
+        const containers = [
+            elements.editorContainer,
+            elements.videoContainer,
+            elements.controlsContainer,
+            document.querySelector('.timeline-container'),
+            document.querySelector('.controls-section')
+        ];
+        
+        containers.forEach(container => {
+            if (container) container.classList.remove('hidden');
+        });
+
+        // Загружаем видео
+        await state.videoEditor.loadVideos(selectedVideos.map(v => v.file));
+        utils.showStatus('Видео загружены успешно');
     } catch (error) {
-        dependencies.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
+        utils.showError(error.message);
+    }
+}
+
+// Инициализация
+function initializeApp() {
+    try {
+        state.videoEditor = new VideoEditor(elements);
+        
+        // Скрываем элементы управления изначально
+        utils.hideElement(elements.editorContainer);
+        utils.hideElement(elements.uploadedVideosSection);
+
+        // Добавляем обработчики событий
+        elements.videoInput?.addEventListener('change', handleVideoUpload);
+        elements.addToTimelineBtn?.addEventListener('click', handleAddToTimeline);
+        
+        initializePlayerControls();
+        
+        utils.showStatus('Editor initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize:', error);
+        utils.showError('Failed to initialize editor');
+    }
+}
+
+// Добавляем обработчик аудио
+function handleAudioUpload(e) {
+    const audioFile = e.target?.files?.[0];
+    if (!audioFile) {
+        utils.showError('No audio file selected');
+        return;
+    }
+    
+    try {
+        state.videoEditor?.applyAudio(audioFile);
+    } catch (error) {
+        utils.showError(error.message);
+    }
+}
+
+// Один единственный слушатель загрузки DOM
+document.addEventListener('DOMContentLoaded', initializeApp);
+
+// Обработчики событий редактирования
+document.getElementById('applyTrimBtn')?.addEventListener('click', async () => {
+    try {
+        const merger = state.videoEditor.processors.merger;
+        if (!merger || !merger.videos.length) {
+            throw new Error('Сначала загрузите видео');
+        }
+
+        // Показываем диалог выбора видео
+        const selectedIndex = await showVideoSelectionDialog(merger.videos);
+        if (selectedIndex === null) return;
+
+        const duration = merger.durations[selectedIndex];
+        const startTime = parseFloat(elements.startInput.value) || 0;
+        const endTime = parseFloat(elements.endInput.value) || duration;
+
+        if (startTime < 0 || endTime > duration || startTime >= endTime) {
+            throw new Error(`Время должно быть между 0 и ${duration.toFixed(1)} секунд`);
+        }
+
+        if (confirm(`Обрезать видео ${selectedIndex + 1} с ${startTime}с до ${endTime}с?`)) {
+            await merger.trimSingleVideo(selectedIndex, startTime, endTime);
+            utils.showStatus('Видео успешно обрезано');
+        }
+    } catch (error) {
+        utils.showError(error.message);
     }
 });
 
-document.getElementById('applyTrimBtn').addEventListener('click', () => {
-    const startTime = parseFloat(document.getElementById('start').value);
-    const endTime = parseFloat(document.getElementById('end').value);
-    try {
-        videoEditor.applyTrim(startTime, endTime);
-    } catch (error) {
-        dependencies.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
-    }
-});
+// Обновленная функция диалога выбора видео
+function showVideoSelectionDialog(videos) {
+    return new Promise((resolve) => {
+        const dialog = document.createElement('div');
+        dialog.className = 'video-selection-dialog';
+        
+        dialog.innerHTML = `
+            <div class="dialog-content">
+                <h3>Выберите видео для обрезки</h3>
+                <div class="video-list">
+                    ${videos.map((_, idx) => `
+                        <div class="video-item">
+                            <button class="video-select-btn" data-index="${idx}">
+                                Видео ${idx + 1}
+                            </button>
+                            <span class="video-duration">
+                                (${formatDuration(videos[idx].duration)})
+                            </span>
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="cancel-btn">Отмена</button>
+            </div>
+        `;
 
+        dialog.addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.classList.contains('video-select-btn')) {
+                const index = parseInt(target.dataset.index);
+                dialog.remove();
+                resolve(index);
+            } else if (target.classList.contains('cancel-btn')) {
+                dialog.remove();
+                resolve(null);
+            }
+        });
+
+        document.body.appendChild(dialog);
+    });
+}
+
+function formatDuration(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Обновляем обработчик текста
 document.getElementById('applyTextBtn').addEventListener('click', () => {
     const text = document.getElementById('textInput').value;
     const position = document.getElementById('textPosition').value;
     const color = document.getElementById('textColor').value;
     const size = document.getElementById('textSize').value;
     try {
-        videoEditor.applyText(text, position, color, size);
+        state.videoEditor.applyText(text, position, color, size);
     } catch (error) {
-        dependencies.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
+        elements.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
     }
 });
 
+// Обновляем обработчик фильтров
 document.getElementById('applyFilterBtn').addEventListener('click', () => {
     const filter = document.getElementById('filterSelect').value;
     try {
-        videoEditor.applyFilter(filter);
+        state.videoEditor.applyFilter(filter);
     } catch (error) {
-        dependencies.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
+        elements.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
     }
 });
 
+// Обновляем обработчик аудио
 document.getElementById('applyAudioBtn').addEventListener('click', () => {
     try {
-        videoEditor.applyAudio();
+        state.videoEditor.applyAudio();
     } catch (error) {
-        dependencies.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
+        elements.debugElement.textContent = `Статус: Ошибка! ${error.message}`;
     }
-});
-
-document.getElementById('playPauseBtn').addEventListener('click', () => {
-    if (dependencies.videoElement.paused) {
-        dependencies.videoElement.play();
-        dependencies.playPauseBtn.textContent = 'Pause';
-    } else {
-        dependencies.videoElement.pause();
-        dependencies.playPauseBtn.textContent = 'Play';
-    }
-});
-
-document.getElementById('muteBtn').addEventListener('click', () => {
-    dependencies.videoElement.muted = !dependencies.videoElement.muted;
-    document.getElementById('muteBtn').textContent = dependencies.videoElement.muted ? 'Unmute' : 'Mute';
-});
-
-document.getElementById('volumeSlider').addEventListener('input', () => {
-    dependencies.videoElement.volume = document.getElementById('volumeSlider').value;
-});
-
-document.getElementById('fullscreenBtn').addEventListener('click', () => {
-    if (dependencies.videoElement.requestFullscreen) {
-        dependencies.videoElement.requestFullscreen();
-    }
-});
-
-document.getElementById('downloadBtn').addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.href = dependencies.videoElement.src;
-    link.download = 'edited-video.mp4';
-    link.click();
-});
-
-dependencies.videoElement.addEventListener('timeupdate', () => {
-    const current = videoEditor.getCurrentTime();
-    dependencies.timelineRange.value = current;
-    dependencies.currentTime.textContent = videoEditor.formatTime(current);
-});
-
-dependencies.timelineRange.addEventListener('input', () => {
-    videoEditor.seekTo(parseFloat(dependencies.timelineRange.value));
 });

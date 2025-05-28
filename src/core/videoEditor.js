@@ -8,16 +8,40 @@ import { TimelineManager } from './timelineManager.js';
 
 export class VideoEditor {
     constructor(dependencies) {
-        this.processors = {
-            audio: new AudioOverlay(dependencies),
-            filter: new FilterApplier(dependencies),
-            text: new TextOverlay(dependencies),
-            loader: new VideoLoader(dependencies),
-            merger: new VideoMerger(dependencies),
-            trimmer: new VideoTrimmer(dependencies),
-        };
-        this.timeline = new TimelineManager();
+        if (!dependencies.videoElement || !dependencies.debugElement) {
+            throw new Error('Required dependencies are missing');
+        }
+        
         this.dependencies = dependencies;
+        this.initializeDependencies();
+    }
+
+    initializeDependencies() {
+        try {
+            this.processors = {
+                loader: new VideoLoader(this.dependencies),
+                audio: new AudioOverlay(this.dependencies),
+                filter: new FilterApplier(this.dependencies),
+                text: new TextOverlay({
+                    ...this.dependencies,
+                    textElement: this.dependencies.textElement || this.createTextOverlay()
+                }),
+                merger: new VideoMerger(this.dependencies),
+                trimmer: new VideoTrimmer(this.dependencies)
+            };
+        } catch (error) {
+            throw new Error(`Failed to initialize: ${error.message}`);
+        }
+    }
+
+    createTextOverlay() {
+        const overlay = document.createElement('div');
+        overlay.id = 'textOverlay';
+        overlay.style.position = 'absolute';
+        overlay.style.pointerEvents = 'none';
+        overlay.style.zIndex = '1';
+        this.dependencies.videoElement.parentElement?.appendChild(overlay);
+        return overlay;
     }
 
     async loadVideos(files) {

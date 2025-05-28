@@ -6,39 +6,43 @@ export class VideoLoader extends VideoProcessor {
         this.inputElement = dependencies.inputElement;
         this.endInput = dependencies.endInput;
         this.startInput = dependencies.startInput;
-        this.bindEvents();
+        
+        if (this.inputElement) {
+            this.bindEvents();
+        }
     }
 
     process(params) {
         const { file } = params;
         if (!file) {
             this.logError('File is not selected');
+            return;
         }
 
         const videoURL = URL.createObjectURL(file);
-        this.videoElement.src = videoURL;
-        this.videoElement.onloadedmetadata = () => {
-            this.debugElement.textContent = `Status: Video loaded, duration ${this.videoElement.duration} sec`;
-            this.endInput.max = this.videoElement.duration;
-            this.endInput.value = this.videoElement.duration;
-            this.startInput.value = '0';
-            this.showEditorInterface(); // Показываем интерфейс после загрузки
-        };
-        this.videoElement.onerror = () => {
-            this.debugElement.textContent = 'Status: Error loading video!';
-        };
+        if (this.videoElement) {
+            this.videoElement.src = videoURL;
+            this.videoElement.onloadedmetadata = () => {
+                if (this.endInput && this.startInput) {
+                    this.endInput.max = this.videoElement.duration;
+                    this.endInput.value = this.videoElement.duration;
+                    this.startInput.value = '0';
+                }
+                this.debugElement.textContent = `Status: Video loaded, duration ${this.videoElement.duration} sec`;
+            };
+            this.videoElement.onerror = () => {
+                this.debugElement.textContent = 'Status: Error loading video!';
+            };
+        }
     }
 
     bindEvents() {
         this.inputElement.addEventListener('change', (e) => {
-            this.debugElement.textContent = 'Status: Loading video...';
-            const file = e.target.files[0];
-            this.process({ file });
+            const file = e.target.files?.[0];
+            if (file) {
+                this.debugElement.textContent = 'Status: Loading video...';
+                this.process({ file });
+            }
         });
-    }
-
-    showEditorInterface() {
-        const elementsToShow = document.querySelectorAll('.hidden');
-        elementsToShow.forEach(el => el.classList.remove('hidden'));
     }
 }
