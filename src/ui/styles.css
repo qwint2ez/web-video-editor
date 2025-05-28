@@ -259,31 +259,41 @@ body {
 
 .dialog-content {
     background: white;
-    padding: 20px;
-    border-radius: 8px;
-    min-width: 300px;
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.dialog-content h3 {
+    margin: 0 0 20px 0;
+    color: #2c3e50;
+    text-align: center;
 }
 
 .video-list {
-    margin: 15px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    margin: 20px 0;
 }
 
 .video-item {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 10px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    margin-bottom: 10px;
 }
 
 .video-select-btn {
-    padding: 8px 16px;
     background: #3498db;
     color: white;
     border: none;
+    padding: 8px 16px;
     border-radius: 4px;
     cursor: pointer;
+    font-weight: bold;
 }
 
 .video-select-btn:hover {
@@ -291,8 +301,88 @@ body {
 }
 
 .video-duration {
-    color: #666;
     font-size: 14px;
+    color: #7f8c8d;
+}
+
+/* Export dialog styles */
+.export-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.export-dialog .dialog-content {
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.export-options {
+    margin: 20px 0;
+}
+
+.option-group {
+    margin-bottom: 15px;
+}
+
+.option-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.option-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 5px;
+}
+
+.dialog-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.export-btn {
+    background: #27ae60;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.export-btn:hover {
+    background: #229954;
+}
+
+.cancel-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.cancel-btn:hover {
+    background: #c0392b;
 }
 
 /* Media item styles */

@@ -53,22 +53,7 @@ function initializePlayerControls() {
     if (elements.downloadBtn) {
         elements.downloadBtn.addEventListener('click', async () => {
             try {
-                utils.showStatus('Preparing and merging video...');
-                const merger = state.videoEditor?.processors?.merger;
-                
-                if (!merger || !merger.videos || merger.videos.length === 0) {
-                    throw new Error('No videos to download');
-                }
-
-                const videoBlob = await merger.exportVideo();
-                const url = URL.createObjectURL(videoBlob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = 'merged-video.webm';
-                link.click();
-                URL.revokeObjectURL(url);
-                
-                utils.showStatus('Video downloaded successfully');
+                await showExportDialog();
             } catch (error) {
                 utils.showError('Download error: ' + error.message);
                 console.error(error);
@@ -471,4 +456,97 @@ document.getElementById('applyAudioBtn')?.classList.add('hidden');
 const applyAudioBtnContainer = document.getElementById('applyAudioBtn')?.closest('.controls');
 if (applyAudioBtnContainer && applyAudioBtnContainer.querySelector('h3')?.textContent === 'Audio') {
     applyAudioBtnContainer.remove();
+}
+
+// Новая функция диалога экспорта
+function showExportDialog() {
+    return new Promise((resolve) => {
+        const dialog = document.createElement('div');
+        dialog.className = 'export-dialog';
+        
+        dialog.innerHTML = `
+            <div class="dialog-content">
+                <h3>Параметры экспорта</h3>
+                
+                <div class="export-options">
+                    <div class="option-group">
+                        <label>
+                            <input type="checkbox" id="includeOriginalAudio" checked>
+                            Включить оригинальный звук видео
+                        </label>
+                    </div>
+                    
+                    <div class="option-group">
+                        <label>
+                            <input type="checkbox" id="includeOverlayAudio" checked>
+                            Включить наложенный звук
+                        </label>
+                    </div>
+                    
+                    <div class="option-group">
+                        <label for="qualitySelect">Качество:</label>
+                        <select id="qualitySelect">
+                            <option value="low">Низкое (быстрый экспорт)</option>
+                            <option value="medium" selected>Среднее</option>
+                            <option value="high">Высокое (медленный экспорт)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="dialog-buttons">
+                    <button class="export-btn" id="startExportBtn">Начать экспорт</button>
+                    <button class="cancel-btn" id="cancelExportBtn">Отмена</button>
+                </div>
+            </div>
+        `;
+
+        const startExport = async () => {
+            const includeOriginalAudio = dialog.querySelector('#includeOriginalAudio').checked;
+            const includeOverlayAudio = dialog.querySelector('#includeOverlayAudio').checked;
+            const quality = dialog.querySelector('#qualitySelect').value;
+            
+            dialog.remove();
+            
+            try {
+                utils.showStatus('Экспорт видео...');
+                const merger = state.videoEditor?.processors?.merger;
+                
+                if (!merger || !merger.videos || merger.videos.length === 0) {
+                    throw new Error('No videos to download');
+                }
+
+                const videoBlob = await merger.exportVideo({
+                    includeOriginalAudio,
+                    includeOverlayAudio,
+                    quality
+                });
+                
+                if (!videoBlob) {
+                    throw new Error('Export failed - no video data');
+                }
+                
+                const url = URL.createObjectURL(videoBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `video-${Date.now()}.webm`;
+                link.click();
+                URL.revokeObjectURL(url);
+                
+                utils.showStatus('Видео успешно экспортировано');
+                resolve();
+            } catch (error) {
+                utils.showError('Ошибка экспорта: ' + error.message);
+                console.error(error);
+                resolve();
+            }
+        };
+
+        dialog.querySelector('#startExportBtn').addEventListener('click', startExport);
+        dialog.querySelector('#cancelExportBtn').addEventListener('click', () => {
+            dialog.remove();
+            resolve();
+        });
+
+        document.body.appendChild(dialog);
+    });
 }
