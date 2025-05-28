@@ -44,7 +44,7 @@ export class VideoEditor {
         return overlay;
     }
 
-    async loadVideos(files) {
+    async loadVideos(files, audioFile = null) {
         this.currentVideoFiles = Array.from(files);
         this.timeline = new TimelineManager();
         
@@ -55,9 +55,13 @@ export class VideoEditor {
         await this.timeline.loadDurations();
         
         if (this.currentVideoFiles.length === 1) {
-            this.processors.loader.process({ file: this.currentVideoFiles[0] });
+            await this.processors.loader.process({ file: this.currentVideoFiles[0] });
         } else if (this.currentVideoFiles.length > 1) {
-            this.processors.merger.process({ videoFiles: this.currentVideoFiles });
+            await this.processors.merger.process({ videoFiles: this.currentVideoFiles });
+        }
+
+        if (audioFile) {
+            await this.processors.audio.process({ file: audioFile });
         }
     }
 

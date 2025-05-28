@@ -11,23 +11,31 @@ export class VideoTrimmer extends VideoProcessor {
 
     async process(params) {
         const { startTime, endTime } = params;
-        const totalDuration = this.merger?.totalDuration || this.videoElement.duration;
+
+        if (!this.merger) {
+            this.logError("VideoMerger is not available for trimming.");
+            return;
+        }
+
+        const totalDuration = this.merger.totalDuration;
+
+        if (this.merger.videos.length === 0) {
+            this.logError("Нет видео для обрезки.");
+            return;
+        }
 
         if (startTime < 0 || endTime > totalDuration || startTime >= endTime) {
-            this.logError(`Время должно быть между 0 и ${totalDuration.toFixed(2)} секунд`);
+            this.logError(`Время для общей обрезки должно быть между 0 и ${totalDuration.toFixed(2)} секунд`);
             return;
         }
 
         try {
             await this.merger.trim(startTime, endTime);
-            
-            this.startTime = startTime;
-            this.endTime = endTime;
-            this.isTrimmed = true;
-            
-            this.debugElement.textContent = `Status: Видео обрезано ${startTime.toFixed(2)}с - ${endTime.toFixed(2)}с`;
+
+            this.debugElement.textContent = `Status: Общая обрезка выполнена ${startTime.toFixed(2)}с - ${endTime.toFixed(2)}с`;
         } catch (error) {
-            this.logError(error.message);
+            this.logError('Ошибка при общей обрезке: ' + error.message);
+            console.error(error);
         }
     }
 

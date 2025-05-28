@@ -58,28 +58,40 @@ body {
     border-radius: 8px;
     margin-top: 10px;
     position: relative;
+    min-height: 100px; /* Ensure enough space for controls and timeline */
 }
 
 #timelineBar {
     position: relative;
-    height: 40px;
+    /* Height will be adjusted by JS or set to accommodate video and audio tracks */
+    min-height: 40px; /* Minimum height for video track */
     margin-top: 20px;
     background: #2a2a2a;
     border-radius: 4px;
     cursor: pointer;
+    overflow: hidden; /* Hide parts of segments if bar isn't tall enough initially */
 }
 
 .timeline-segment {
     position: absolute;
-    height: 100%;
-    background: linear-gradient(135deg, #3498db, #2980b9);
+    /* height: 100%; */ /* Height will be specific to video/audio */
     border-right: 2px solid rgba(255, 255, 255, 0.2);
     transition: all 0.2s;
     cursor: pointer;
+    box-sizing: border-box;
 }
 
-.timeline-segment:hover {
-    filter: brightness(1.2);
+.video-segment { /* Specific class for video segments */
+    height: 40px; /* Default height for video segments */
+    top: 0;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+}
+
+.audio-segment { /* Specific class for audio segments */
+    height: 20px;
+    /* top will be set by JS: 0px if no videos, 50px (40px video + 10px gap) if videos exist */
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+    z-index: 1; /* Ensure audio is visually distinct if overlapping slightly during render */
 }
 
 .video-info {
@@ -125,7 +137,7 @@ body {
     position: absolute;
     top: 0;
     width: 2px;
-    height: 100%;
+    height: 100%; /* Span the full height of its container (timelineBar) */
     background: #e74c3c;
     z-index: 3;
     pointer-events: none;
@@ -192,8 +204,8 @@ body {
     margin-top: 10px;
 }
 
-.timeline-segments {
-    height: 60px;
+.timeline-segments { /* This class seems unused, ensure it's removed or correctly applied if needed */
+    height: 60px; /* If used, ensure this is appropriate */
     background: #2a2a2a;
     border-radius: 4px;
     position: relative;
@@ -266,6 +278,29 @@ body {
 .video-duration {
     color: #666;
     font-size: 14px;
+}
+
+/* Media item styles */
+.media-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    margin: 5px 0;
+}
+
+.media-icon {
+    font-size: 1.2em;
+}
+
+.media-item.audio {
+    background: #e8f5e9;
+}
+
+.media-item.video {
+    background: #e3f2fd;
 }
 
 /* Utility classes */
