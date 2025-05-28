@@ -19,7 +19,7 @@ export class AudioOverlay extends VideoProcessor {
     }
 
     async applyAudio() {
-        await this.clearAudio(); // Clear existing audio and listeners first
+        await this.clearAudio(); 
 
         if (!this.audioFile || !this.videoElement) {
             return;
@@ -30,11 +30,15 @@ export class AudioOverlay extends VideoProcessor {
             this.audio = new Audio(audioUrl);
             this.audio.loop = true;
 
-            // Store handlers to remove them later
             this.eventHandlers.play = () => {
                 if (this.audio && this.videoElement) {
                     this.audio.currentTime = this.videoElement.currentTime;
-                    this.audio.play().catch(e => console.warn("Audio play interrupted:", e));
+                    // Attempt to play, but catch AbortError if interrupted
+                    this.audio.play().catch(error => {
+                        if (error.name !== 'AbortError') {
+                            console.warn("Audio play failed:", error.name, error.message);
+                        }
+                    });
                 }
             };
             this.eventHandlers.pause = () => {
@@ -42,7 +46,11 @@ export class AudioOverlay extends VideoProcessor {
             };
             this.eventHandlers.seeking = () => {
                 if (this.audio && this.videoElement) {
-                    this.audio.currentTime = this.videoElement.currentTime;
+                    // Ensure currentTime is not set to NaN or undefined
+                    const videoTime = parseFloat(this.videoElement.currentTime);
+                    if (Number.isFinite(videoTime)) {
+                        this.audio.currentTime = videoTime;
+                    }
                 }
             };
             this.eventHandlers.volumechange = () => {
@@ -50,14 +58,32 @@ export class AudioOverlay extends VideoProcessor {
                     this.audio.volume = this.videoElement.volume;
                 }
             };
+            // Handle ended event for the main video to potentially stop or loop audio if needed,
+            // though current logic is to loop audio indefinitely.
+            // this.eventHandlers.ended = () => { if (this.audio) this.audio.pause(); /* or loop logic */ };
+
 
             this.videoElement.addEventListener('play', this.eventHandlers.play);
             this.videoElement.addEventListener('pause', this.eventHandlers.pause);
             this.videoElement.addEventListener('seeking', this.eventHandlers.seeking);
             this.videoElement.addEventListener('volumechange', this.eventHandlers.volumechange);
+            // this.videoElement.addEventListener('ended', this.eventHandlers.ended);
+
 
             if (this.videoElement) {
                 this.audio.volume = this.videoElement.volume;
+                // If video is already playing when audio is applied, try to sync and play audio
+                if (!this.videoElement.paused) {
+                    const videoTime = parseFloat(this.videoElement.currentTime);
+                    if (Number.isFinite(videoTime)) {
+                        this.audio.currentTime = videoTime;
+                    }
+                    this.audio.play().catch(error => {
+                        if (error.name !== 'AbortError') {
+                            console.warn("Audio play failed on applyAudio:", error.name, error.message);
+                        }
+                    });
+                }
             }
             this.debugElement.textContent = 'Status: Audio overlay applied';
         } catch (error) {
@@ -69,17 +95,26 @@ export class AudioOverlay extends VideoProcessor {
     async clearAudio() {
         if (this.audio) {
             this.audio.pause();
-            this.audio = null; // Release the Audio object
+            // It's good practice to remove the src to release resources,
+            // though setting to null and removing listeners is key.
+            if (this.audio.src && this.audio.src.startsWith('blob:')) {
+                URL.revokeObjectURL(this.audio.src);
+            }
+            this.audio.removeAttribute('src'); // More thorough cleanup
+            this.audio.load(); // Aborts current playback and resets
+            this.audio = null; 
         }
-        // Remove event listeners
         if (this.videoElement) {
             if (this.eventHandlers.play) this.videoElement.removeEventListener('play', this.eventHandlers.play);
             if (this.eventHandlers.pause) this.videoElement.removeEventListener('pause', this.eventHandlers.pause);
             if (this.eventHandlers.seeking) this.videoElement.removeEventListener('seeking', this.eventHandlers.seeking);
             if (this.eventHandlers.volumechange) this.videoElement.removeEventListener('volumechange', this.eventHandlers.volumechange);
+            // if (this.eventHandlers.ended) this.videoElement.removeEventListener('ended', this.eventHandlers.ended);
         }
-        this.eventHandlers = {}; // Clear stored handlers
-        this.audioFile = null; // Clear the stored audio file
-        // this.debugElement.textContent = 'Status: Audio cleared'; // Optional status update
+        this.eventHandlers = {}; 
+        // this.audioFile = null; // audioFile is managed by VideoMerger, AudioOverlay just uses it.
+                               // Clearing it here might cause issues if VideoMerger expects it to persist.
+                               // Let VideoMerger manage the lifecycle of audioFile.
+        // this.debugElement.textContent = 'Status: Audio cleared'; 
     }
 }

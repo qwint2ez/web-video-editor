@@ -325,9 +325,12 @@ document.addEventListener('DOMContentLoaded', initializeApp);
 document.getElementById('applyTrimBtn')?.addEventListener('click', async () => {
     try {
         const merger = state.videoEditor?.processors?.merger;
-        // const trimmer = state.videoEditor?.processors?.trimmer; // Not used in current logic
 
-        if (!merger || !merger.videos || merger.videos.length === 0) {
+        if (!merger) {
+            throw new Error('Видеоредактор не инициализирован');
+        }
+
+        if (!merger.videos || merger.videos.length === 0) {
             throw new Error('Сначала загрузите видео для обрезки');
         }
 
@@ -335,34 +338,47 @@ document.getElementById('applyTrimBtn')?.addEventListener('click', async () => {
         const endTimeInput = parseFloat(elements.endInput.value);
 
         if (merger.videos.length === 1) {
+            // Single video case
             const singleVideoDuration = merger.durations[0];
+            if (!Number.isFinite(singleVideoDuration) || singleVideoDuration <= 0) {
+                throw new Error('Невозможно определить длительность видео');
+            }
+
             const start = Number.isFinite(startTimeInput) ? startTimeInput : 0;
             const end = Number.isFinite(endTimeInput) && endTimeInput > 0 ? endTimeInput : singleVideoDuration;
 
             if (start < 0 || end > singleVideoDuration || start >= end) {
-                 throw new Error(`Время для обрезки единственного видео должно быть между 0 и ${singleVideoDuration.toFixed(1)}с. Start: ${start}, End: ${end}`);
+                throw new Error(`Время для обрезки единственного видео должно быть между 0 и ${singleVideoDuration.toFixed(1)}с. Start: ${start}, End: ${end}`);
             }
+            
             if (confirm(`Обрезать видео с ${start.toFixed(2)}с до ${end.toFixed(2)}с? (Относительно этого видео)`)) {
                 await merger.trimSingleVideo(0, start, end);
                 utils.showStatus('Видео успешно обрезано');
             }
         } else if (merger.videos.length > 1) {
+            // Multiple videos case
             const selectedIndex = await showVideoSelectionDialog(merger.videos);
-            if (selectedIndex === null) return; 
+            if (selectedIndex === null) return;
 
             const videoToTrimDuration = merger.durations[selectedIndex];
+            if (!Number.isFinite(videoToTrimDuration) || videoToTrimDuration <= 0) {
+                throw new Error(`Невозможно определить длительность видео ${selectedIndex + 1}`);
+            }
+
             const start = Number.isFinite(startTimeInput) ? startTimeInput : 0;
             const end = Number.isFinite(endTimeInput) && endTimeInput > 0 ? endTimeInput : videoToTrimDuration;
             
             if (start < 0 || end > videoToTrimDuration || start >= end) {
-                 throw new Error(`Время для обрезки видео ${selectedIndex + 1} должно быть между 0 и ${videoToTrimDuration.toFixed(1)}с. Start: ${start}, End: ${end}`);
+                throw new Error(`Время для обрезки видео ${selectedIndex + 1} должно быть между 0 и ${videoToTrimDuration.toFixed(1)}с. Start: ${start}, End: ${end}`);
             }
+            
             if (confirm(`Обрезать видео ${selectedIndex + 1} с ${start.toFixed(2)}с до ${end.toFixed(2)}с?`)) {
                 await merger.trimSingleVideo(selectedIndex, start, end);
                 utils.showStatus(`Видео ${selectedIndex + 1} успешно обрезано`);
             }
         }
-        updateTotalDurationDisplay(); 
+        
+        updateTotalDurationDisplay();
     } catch (error) {
         utils.showError(error.message);
         console.error(error);
@@ -375,8 +391,9 @@ function showVideoSelectionDialog(videos) {
         const dialog = document.createElement('div');
         dialog.className = 'video-selection-dialog';
         
+        const merger = state.videoEditor?.processors?.merger;
         const videoDurations = videos.map((_, idx) => {
-            const duration = state.videoEditor.processors.merger.durations[idx];
+            const duration = merger?.durations[idx];
             return duration ? formatDuration(duration) : '0:00';
         });
         
