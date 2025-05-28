@@ -22,6 +22,7 @@ export class VideoLoader extends VideoProcessor {
             this.endInput.max = this.videoElement.duration;
             this.endInput.value = this.videoElement.duration;
             this.startInput.value = '0';
+            this.showEditorInterface(); // Показываем интерфейс после загрузки
         };
         this.videoElement.onerror = () => {
             this.debugElement.textContent = 'Status: Error loading video!';
@@ -34,5 +35,10 @@ export class VideoLoader extends VideoProcessor {
             const file = e.target.files[0];
             this.process({ file });
         });
+    }
+
+    showEditorInterface() {
+        const elementsToShow = document.querySelectorAll('.hidden');
+        elementsToShow.forEach(el => el.classList.remove('hidden'));
     }
 }

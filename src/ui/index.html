@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
+  <header class="hidden">
     <h1>QWINT's VIDEO EDITOR</h1>
   </header>
 
@@ -15,12 +15,12 @@
     <label for="videoInput" class="upload-btn">Upload Video(s)</label>
     <input type="file" id="videoInput" accept="video/*" multiple style="display: none;">
     <input type="file" id="audioInput" accept="audio/*" style="display: none;">
-    <label for="audioInput" class="upload-btn">Upload Audio</label>
+    <label for="audioInput" class="upload-btn hidden">Upload Audio</label>
   </div>
 
   <p id="debug">Status: Waiting for video upload...</p>
 
-  <div class="controls">
+  <div class="controls hidden">
     <h3>Trim</h3>
     <label for="start">Start (sec):</label>
     <input type="number" id="start" min="0" step="0.1" value="0">
@@ -29,7 +29,7 @@
     <button id="applyTrimBtn">Apply Trim</button>
   </div>
 
-  <div class="controls">
+  <div class="controls hidden">
     <h3>Add Text</h3>
     <input type="text" id="textInput" placeholder="Enter text">
     <select id="textPosition">
@@ -47,7 +47,7 @@
     <button id="applyTextBtn">Apply Text</button>
   </div>
 
-  <div class="controls">
+  <div class="controls hidden">
     <h3>Apply Filter</h3>
     <select id="filterSelect">
       <option value="">Select Filter</option>
@@ -58,13 +58,13 @@
     <button id="applyFilterBtn">Apply Filter</button>
   </div>
 
-  <div class="controls">
+  <div class="controls hidden">
     <h3>Overlay Audio</h3>
     <button id="applyAudioBtn">Apply Audio</button>
   </div>
 
-  <h2>Result</h2>
-  <div class="video-container">
+  <h2 class="hidden">Result</h2>
+  <div class="video-container hidden">
     <video id="processedVideo"></video>
     <div id="textOverlay"></div>
     <div class="custom-player">
