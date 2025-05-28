@@ -33,7 +33,6 @@ export class AudioOverlay extends VideoProcessor {
             this.eventHandlers.play = () => {
                 if (this.audio && this.videoElement) {
                     this.audio.currentTime = this.videoElement.currentTime;
-                    // Attempt to play, but catch AbortError if interrupted
                     this.audio.play().catch(error => {
                         if (error.name !== 'AbortError') {
                             console.warn("Audio play failed:", error.name, error.message);
@@ -72,7 +71,6 @@ export class AudioOverlay extends VideoProcessor {
 
             if (this.videoElement) {
                 this.audio.volume = this.videoElement.volume;
-                // If video is already playing when audio is applied, try to sync and play audio
                 if (!this.videoElement.paused) {
                     const videoTime = parseFloat(this.videoElement.currentTime);
                     if (Number.isFinite(videoTime)) {

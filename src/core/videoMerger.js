@@ -23,9 +23,6 @@ export class VideoMerger extends VideoProcessor {
         this.handleVideoEnded = this.handleVideoEnded.bind(this);
 
         this.bindEvents();
-        // if (this.timelineBar) { // Removed call from here
-        //     this.setupTimelineElements();
-        // }
     }
 
     formatTime(seconds) {
@@ -46,6 +43,14 @@ export class VideoMerger extends VideoProcessor {
                 resolve(0); 
                 return;
             }
+            
+            // Если это blob размером 0, сразу возвращаем 0
+            if (file.size === 0) {
+                console.warn("File has 0 size, returning 0 duration");
+                resolve(0);
+                return;
+            }
+            
             const video = document.createElement('video');
             video.preload = 'metadata';
             let srcUrl = '';
@@ -58,12 +63,24 @@ export class VideoMerger extends VideoProcessor {
                 resolve(0);
                 return;
             }
+            
+            // Увеличим таймаут для обрезанных видео
+            const timeout = setTimeout(() => {
+                console.warn("Video duration loading timeout");
+                URL.revokeObjectURL(srcUrl);
+                resolve(0);
+            }, 10000); // 10 секунд таймаут
+            
             video.onloadedmetadata = () => {
+                clearTimeout(timeout);
                 const duration = video.duration;
                 URL.revokeObjectURL(srcUrl);
+                console.log(`Duration loaded: ${duration} for file size: ${file.size}`);
                 resolve(Number.isFinite(duration) && duration > 0 ? duration : 0);
             };
+            
             video.onerror = (e) => {
+                clearTimeout(timeout);
                 URL.revokeObjectURL(srcUrl);
                 console.error(`Error loading video metadata for duration: ${file.name || 'unknown file'}`, e);
                 resolve(0); 
@@ -227,15 +244,17 @@ export class VideoMerger extends VideoProcessor {
         this.durations = []; 
 
         if (this.videos && this.videos.length > 0) {
-            for (const videoFile of this.videos) {
-                // Ensure videoFile is a valid File/Blob before getting duration
+            console.log('Loading durations for videos:', this.videos.length);
+            for (let i = 0; i < this.videos.length; i++) {
+                const videoFile = this.videos[i];
                 if (videoFile instanceof Blob || videoFile instanceof File) {
                     const duration = await this.getVideoDuration(videoFile);
+                    console.log(`Video ${i+1} duration:`, duration);
                     this.durations.push(duration); 
                     videoTotalDurationNum += duration;
                 } else {
-                    this.durations.push(0); // Push 0 for invalid entries
-                    console.warn("Invalid video item in videos array:", videoFile);
+                    console.warn("Invalid video item at index", i, videoFile);
+                    this.durations.push(0);
                 }
             }
         }
@@ -246,10 +265,17 @@ export class VideoMerger extends VideoProcessor {
         }
         this.audioDuration = audioDurationNum; 
         
+        // Ensure totalDuration is never 0 if we have videos
         this.totalDuration = Math.max(videoTotalDurationNum, audioDurationNum);
+        if (this.videos.length > 0 && this.totalDuration === 0) {
+            // If we have videos but total duration is 0, set a minimum
+            this.totalDuration = 0.1; // 0.1 second minimum for display purposes
+        }
         if (!Number.isFinite(this.totalDuration) || this.totalDuration < 0) {
             this.totalDuration = 0; 
         }
+        
+        console.log('Total duration calculated:', this.totalDuration);
     }
     
     async getAudioFileDuration(file) {
@@ -290,19 +316,15 @@ export class VideoMerger extends VideoProcessor {
             return;
         }
 
+        console.log('Rendering timeline for videos:', this.videos.length, 'with durations:', this.durations, 'total duration:', this.totalDuration);
+
         this.timelineBar.innerHTML = '';
         let currentVideoOffset = 0;
         let timelineBarActualHeight = 0;
 
-        // CRITICAL: Force a minimum effective duration to prevent div-by-zero issues
-        // and ensure videos are displayed even if totalDuration is 0
-        const effectiveTotalDuration = Math.max(0.001, this.totalDuration);
-
-        // Render videos if there are any, even with zero duration
         if (this.videos && this.videos.length > 0) {
             timelineBarActualHeight = 40;
             
-            // Loop through all videos, even those with 0 duration
             this.videos.forEach((video, index) => {
                 const segment = document.createElement('div');
                 segment.className = 'timeline-segment video-segment';
@@ -311,19 +333,37 @@ export class VideoMerger extends VideoProcessor {
                     ? this.durations[index] 
                     : 0;
                 
-                // Calculate width and position as percentage of total duration
-                const widthPercent = (segmentDuration / effectiveTotalDuration) * 100;
-                const leftPercent = (currentVideoOffset / effectiveTotalDuration) * 100;
+                let widthPercent = 0;
+                let leftPercent = 0;
+                
+                // Рассчитываем ширину сегмента
+                if (this.totalDuration > 0) {
+                    widthPercent = (segmentDuration / this.totalDuration) * 100;
+                    leftPercent = (currentVideoOffset / this.totalDuration) * 100;
+                } else {
+                    // Если общая длительность 0, распределяем равномерно
+                    widthPercent = 100 / this.videos.length;
+                    leftPercent = (index * 100) / this.videos.length;
+                }
+                
+                // Минимальная ширина для видимости
+                if (widthPercent < 2) {
+                    widthPercent = 2;
+                }
                 
                 segment.style.width = `${Math.max(0, Math.min(100, widthPercent))}%`;
                 segment.style.left = `${Math.max(0, Math.min(100, leftPercent))}%`;
+                
+                // Визуальный индикатор для видео с нулевой длительностью
+                if (segmentDuration === 0) {
+                    segment.style.background = 'repeating-linear-gradient(45deg, #e74c3c, #e74c3c 10px, #c0392b 10px, #c0392b 20px)';
+                    segment.style.opacity = '0.7';
+                }
                 
                 const label = document.createElement('div');
                 label.className = 'video-info';
                 const startNum = Number.isFinite(currentVideoOffset) ? currentVideoOffset : 0;
                 const endNum = startNum + segmentDuration;
-                
-                // Always show the segment, even if it has 0 duration
                 label.textContent = `Video ${index + 1} (${startNum.toFixed(2)}-${endNum.toFixed(2)}s)`;
                 
                 const deleteBtn = document.createElement('button');
@@ -341,41 +381,38 @@ export class VideoMerger extends VideoProcessor {
                 currentVideoOffset += segmentDuration;
             });
         }
-
+        
+        // Render audio track if exists
         if (this.audioFile) {
             const audioTrackHeight = 20;
             const gap = (this.videos && this.videos.length > 0) ? 10 : 0; 
             const audioTopPos = (this.videos && this.videos.length > 0) ? timelineBarActualHeight + gap : 0;
             
-            timelineBarActualHeight = audioTopPos + audioTrackHeight; 
-
+            timelineBarActualHeight = audioTopPos + audioTrackHeight;
+            
             const audioSegment = document.createElement('div');
             audioSegment.className = 'timeline-segment audio-segment';
             
             const finiteAudioDuration = (Number.isFinite(this.audioDuration) && this.audioDuration >= 0) ? this.audioDuration : 0;
             let audioWidthPercent = 0;
-
+            
             if (this.totalDuration > 0) {
                 audioWidthPercent = (finiteAudioDuration / this.totalDuration) * 100;
-            } else if ((!this.videos || this.videos.length === 0) && finiteAudioDuration > 0) { 
-                // Only audio exists, and it has duration, but totalDuration might be 0 if videos were 0.
-                // In this specific case, audio should take full width.
+            } else if ((!this.videos || this.videos.length === 0) && finiteAudioDuration > 0) {
                 audioWidthPercent = 100;
             }
-            // If totalDuration is 0 and audioDuration is 0, audioWidthPercent remains 0.
-
-
+            
             audioSegment.style.width = `${Math.max(0, Math.min(100, audioWidthPercent))}%`; 
             audioSegment.style.left = '0%';
             audioSegment.style.top = `${audioTopPos}px`; 
             audioSegment.style.height = `${audioTrackHeight}px`;
-
+            
             const audioLabel = document.createElement('div');
-            audioLabel.className = 'video-info'; 
+            audioLabel.className = 'video-info';
             const audioName = this.audioFile.name || 'Audio File';
             audioLabel.textContent = `Audio: ${audioName.substring(0, 30)}${audioName.length > 30 ? '...' : ''}`;
             audioLabel.style.bottom = '2px';
-
+            
             const deleteAudioBtn = document.createElement('button');
             deleteAudioBtn.className = 'delete-btn';
             deleteAudioBtn.textContent = '×';
@@ -385,7 +422,7 @@ export class VideoMerger extends VideoProcessor {
                 e.stopPropagation();
                 this.removeAudio();
             };
-
+            
             audioSegment.appendChild(audioLabel);
             audioSegment.appendChild(deleteAudioBtn);
             this.timelineBar.appendChild(audioSegment);
@@ -395,7 +432,7 @@ export class VideoMerger extends VideoProcessor {
         const minHeight = (this.videos && this.videos.length > 0) || this.audioFile ? 40 : 0;
         this.timelineBar.style.height = `${Math.max(minHeight, timelineBarActualHeight)}px`;
         
-        // Re-add cursor and progress elements as innerHTML clears them
+        // Добавляем курсор и прогресс
         this.setupTimelineElements();
     }
 
@@ -403,7 +440,7 @@ export class VideoMerger extends VideoProcessor {
         if (this.videoElement && this.videos && index >= 0 && index < this.videos.length) {
             this.videoElement.pause(); 
             
-            // Calculate currentTimeOffset based on durations of videos before the current one
+            // Calculate currentTimeOffset
             this.currentTimeOffset = 0;
             for (let i = 0; i < index; i++) {
                 if (this.durations[i] && Number.isFinite(this.durations[i])) {
@@ -411,22 +448,56 @@ export class VideoMerger extends VideoProcessor {
                 }
             }
 
-            const videoUrl = URL.createObjectURL(this.videos[index]);
+            // Check if the video blob is valid before creating URL
+            const videoBlob = this.videos[index];
+            if (!videoBlob || !(videoBlob instanceof Blob || videoBlob instanceof File)) {
+                console.error("Invalid video blob at index", index);
+                this.debugElement.textContent = 'Ошибка: Неверный формат видео';
+                return Promise.reject(new Error("Invalid video blob"));
+            }
+
+            // Check blob size
+            if (videoBlob.size === 0) {
+                console.warn("Video blob has 0 size at index", index);
+                this.debugElement.textContent = 'Предупреждение: Видео имеет нулевой размер';
+                // Don't try to load 0-size video, just update display
+                this.updateTimeDisplay();
+                return Promise.resolve();
+            }
+
+            const videoUrl = URL.createObjectURL(videoBlob);
             this.videoElement.src = videoUrl;
             this.currentIndex = index;
             
             return new Promise((resolve, reject) => {
+                const cleanup = () => {
+                    URL.revokeObjectURL(videoUrl);
+                };
+                
                 this.videoElement.onloadedmetadata = () => {
+                    console.log("Video loaded successfully at index", index);
                     if (this.isPlaying) {
                         this.videoElement.play().catch(e => console.warn("Play interrupted on load:", e.name, e.message));
                     }
                     resolve();
                 };
+                
                 this.videoElement.onerror = (e) => {
-                    console.error("Error loading video:", e);
-                    URL.revokeObjectURL(videoUrl); // Clean up if error
-                    reject(e);
-                }
+                    console.error("Error loading video at index", index, ":", e);
+                    cleanup();
+                    // Don't reject completely, just log and continue
+                    this.debugElement.textContent = `Ошибка загрузки видео ${index + 1}`;
+                    resolve(); // Resolve instead of reject to prevent breaking the flow
+                };
+                
+                // Add timeout to prevent hanging
+                setTimeout(() => {
+                    if (this.videoElement.readyState < 2) { // HAVE_CURRENT_DATA
+                        console.warn("Video loading timeout at index", index);
+                        cleanup();
+                        resolve();
+                    }
+                }, 5000);
             });
         } else if (this.videoElement && (!this.videos || this.videos.length === 0)) {
             this.videoElement.src = ''; 
@@ -621,11 +692,11 @@ export class VideoMerger extends VideoProcessor {
             this.logError("Нет видео для обрезки.");
             return;
         }
-        // Validate overall trim times against the current totalDuration
-        const currentTotalDuration = (Number.isFinite(this.totalDuration) && this.totalDuration > 0) ? this.totalDuration : 0;
         
-        // Allow trimming to 0 length if startTime and endTime are the same
-        if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime < 0 || endTime < startTime || (currentTotalDuration > 0 && endTime > currentTotalDuration) ) {
+        // Validate trim times
+        const currentTotalDuration = (Number.isFinite(this.totalDuration) && this.totalDuration > 0) ? this.totalDuration : 0;
+        if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime < 0 || endTime < startTime || 
+            (currentTotalDuration > 0 && endTime > currentTotalDuration)) {
             this.logError(`Некорректный общий интервал для обрезки: ${startTime}-${endTime}. Общая длительность: ${currentTotalDuration}`);
             return;
         }
@@ -640,7 +711,6 @@ export class VideoMerger extends VideoProcessor {
 
             for (let i = 0; i < this.videos.length; i++) {
                 const videoFile = this.videos[i];
-                // this.durations should be up-to-date from a previous loadMediaDurations call
                 const originalSegmentDuration = (this.durations[i] && Number.isFinite(this.durations[i])) ? this.durations[i] : 0;
                 const segmentEndBoundaryInTimeline = accumulatedTimeBeforeSegment + originalSegmentDuration;
                 
@@ -681,7 +751,6 @@ export class VideoMerger extends VideoProcessor {
             this.updateTimelineSegments(); // Render timeline with new durations
             this.updateTimeDisplay();
             this.debugElement.textContent = `Статус: Обрезка выполнена с ${startTime.toFixed(2)}с до ${endTime.toFixed(2)}с`;
-
         } catch (error) {
             console.error('Error trimming video:', error);
             this.logError('Ошибка при обрезке видео: ' + error.message);
@@ -700,22 +769,21 @@ export class VideoMerger extends VideoProcessor {
         }
 
         const videoFileToTrim = this.videos[index];
-        if (!videoFileToTrim) {
-            this.logError(`Видео с индексом ${index} не найдено.`);
-            return;
-        }
-
         const originalSegmentDuration = (Number.isFinite(this.durations[index]) && this.durations[index] >= 0) 
             ? this.durations[index] 
             : 0;
 
         const safeStartTime = (Number.isFinite(startTime) && startTime >= 0) ? startTime : 0;
-        const safeEndTime = (Number.isFinite(endTime) && endTime > safeStartTime) ? endTime : originalSegmentDuration;
+        const safeEndTime = (Number.isFinite(endTime) && endTime >= safeStartTime) ? endTime : originalSegmentDuration;
 
         if (safeStartTime < 0 || safeEndTime > originalSegmentDuration) {
             this.logError(`Время для обрезки видео ${index + 1} некорректно. Start: ${safeStartTime.toFixed(2)}, End: ${safeEndTime.toFixed(2)}, Original Duration: ${originalSegmentDuration.toFixed(2)}`);
             return;
         }
+
+        // Вычисляем ожидаемую длительность обрезанного видео
+        const expectedTrimmedDuration = safeEndTime - safeStartTime;
+        console.log(`Trimming video ${index} from ${safeStartTime}s to ${safeEndTime}s, expected duration: ${expectedTrimmedDuration}s`);
 
         try {
             this.videoElement.pause();
@@ -723,39 +791,78 @@ export class VideoMerger extends VideoProcessor {
             const playPauseBtn = document.getElementById('playPauseBtn');
             if (playPauseBtn) playPauseBtn.textContent = 'Play';
 
-            // Trim the video segment
+            // Обрезаем видео
             const trimmedVideoBlob = await this.trimVideoSegment(videoFileToTrim, safeStartTime, safeEndTime);
+            console.log('Trimmed video blob size:', trimmedVideoBlob.size);
             
-            // Critical: Replace the video at the same index - don't remove it!
-            // This preserves the video order in the timeline
+            // Проверяем, что получили валидный blob
+            if (trimmedVideoBlob.size === 0) {
+                console.warn('Trimmed video has 0 size');
+                this.logError('Обрезанное видео имеет нулевой размер');
+                return;
+            }
+            
+            // Заменяем оригинальное видео обрезанным
             this.videos[index] = trimmedVideoBlob;
             
-            // Recalculate durations for all videos
-            await this.loadMediaDurations();
+            // ВАЖНО: Обновляем длительность вручную с ожидаемым значением
+            // Это решает проблему с неправильным определением длительности blob-а
+            this.durations[index] = expectedTrimmedDuration;
+            console.log(`Manually set duration for video ${index} to ${expectedTrimmedDuration}s`);
             
-            // Recalculate currentTimeOffset based on durations of videos before currentIndex
+            // Пересчитываем общую длительность
+            let videoTotalDuration = 0;
+            for (let i = 0; i < this.durations.length; i++) {
+                if (Number.isFinite(this.durations[i])) {
+                    videoTotalDuration += this.durations[i];
+                }
+            }
+            
+            this.totalDuration = Math.max(videoTotalDuration, this.audioDuration || 0);
+            console.log('Updated total duration:', this.totalDuration);
+            
+            // Пересчитываем смещение по времени
             this.currentTimeOffset = 0;
             for (let i = 0; i < this.currentIndex; i++) {
                 this.currentTimeOffset += (Number.isFinite(this.durations[i]) ? this.durations[i] : 0);
             }
             
-            // Reload current video
-            if (this.videos.length > 0) {
-                this.currentIndex = Math.min(this.currentIndex, this.videos.length - 1);
+            // Пытаемся загрузить видео только если у него есть длительность
+            if (this.videos.length > 0 && this.durations[this.currentIndex] > 0) {
                 await this.loadVideo(this.currentIndex);
-            } else {
-                if (this.videoElement) this.videoElement.src = '';
+            } else if (this.videos.length > 0) {
+                // Ищем первое видео с длительностью > 0
+                let validVideoIndex = -1;
+                for (let i = 0; i < this.videos.length; i++) {
+                    if (this.durations[i] > 0) {
+                        validVideoIndex = i;
+                        break;
+                    }
+                }
+                
+                if (validVideoIndex >= 0) {
+                    this.currentIndex = validVideoIndex;
+                    this.currentTimeOffset = 0;
+                    for (let i = 0; i < validVideoIndex; i++) {
+                        this.currentTimeOffset += (Number.isFinite(this.durations[i]) ? this.durations[i] : 0);
+                    }
+                    await this.loadVideo(validVideoIndex);
+                } else {
+                    // Все видео имеют 0 длительность
+                    this.videoElement.src = '';
+                }
             }
             
-            // Update audio if present
+            // Обновляем аудио если есть
             if (this.audioFile && this.processors?.audio) {
                 await this.processors.audio.applyAudio();
             }
             
-            // Update the timeline visualization and time display
+            // Обновляем таймлайн и дисплей
             this.updateTimelineSegments();
             this.updateTimeDisplay();
-            this.debugElement.textContent = `Статус: Видео ${index + 1} успешно обрезано`;
+            this.debugElement.textContent = `Статус: Видео ${index + 1} обрезано с ${safeStartTime.toFixed(2)}с до ${safeEndTime.toFixed(2)}с (длительность: ${expectedTrimmedDuration.toFixed(2)}с)`;
+            
         } catch (error) {
             console.error('Error trimming single video:', error);
             this.logError('Ошибка при обрезке видео: ' + error.message);
@@ -767,17 +874,11 @@ export class VideoMerger extends VideoProcessor {
             this.videoElement.pause();
             this.isPlaying = false;
             document.getElementById('playPauseBtn').textContent = 'Play';
-
+            
             const removedVideo = this.videos.splice(index, 1)[0];
-            if (removedVideo) { // Revoke object URL if it's a Blob
-                // Check if it's a blob and has a URL created by createObjectURL
-                // This is a bit tricky as we don't store the URL itself.
-                // For now, we assume it's a blob that might have an active URL.
-                // A more robust way would be to manage URLs explicitly.
-            }
             
             await this.loadMediaDurations(); // Recalculate all durations
-
+            
             // Adjust currentIndex and currentTimeOffset
             if (this.currentIndex >= this.videos.length && this.videos.length > 0) {
                 this.currentIndex = this.videos.length - 1;
@@ -786,29 +887,31 @@ export class VideoMerger extends VideoProcessor {
             }
             
             this.currentTimeOffset = 0;
-            for(let i=0; i < this.currentIndex; i++) {
-                if (this.durations[i] && Number.isFinite(this.durations[i])) this.currentTimeOffset += this.durations[i];
+            for(let i = 0; i < this.currentIndex; i++) {
+                if (this.durations[i] && Number.isFinite(this.durations[i])) {
+                    this.currentTimeOffset += this.durations[i];
+                }
             }
-
+            
             this.updateTimelineSegments(); // Render timeline with new durations
-
+            
             if (this.videos.length > 0) {
                 await this.loadVideo(this.currentIndex);
             } else {
                 if (this.videoElement) this.videoElement.src = '';
                 this.currentTimeOffset = 0; // Ensure offset is 0 if no videos
             }
+            
             this.updateTimeDisplay();
             this.debugElement.textContent = 'Статус: Видео удалено';
         }
     }
-
+    
     async removeAudio() { 
         if (this.processors?.audio) {
             await this.processors.audio.clearAudio();
         }
         this.audioFile = null;
-        // this.audioDuration = 0; // loadMediaDurations will handle this
         
         await this.loadMediaDurations(); // Recalculate totalDuration
         this.updateTimelineSegments(); // Render timeline
@@ -839,6 +942,202 @@ export class VideoMerger extends VideoProcessor {
         const totalDurationDisplay = document.getElementById('duration');
         if (totalDurationDisplay) {
             totalDurationDisplay.textContent = this.formatTime(validTotalDuration);
+        }
+    }
+
+    async exportVideo() {
+        if ((!this.videos || this.videos.length === 0) && !this.audioFile) {
+            this.logError("No media to export.");
+            return null;
+        }
+
+        this.debugElement.textContent = "Status: Preparing export...";
+        let canvas, ctx, audioContext, destination, exportAudioElement = null;
+        let videoStreamTracks = [];
+        let audioStreamTracks = [];
+        let objectUrlsToRevoke = [];
+
+        try {
+            if (this.videos && this.videos.length > 0) {
+                canvas = document.createElement('canvas');
+                ctx = canvas.getContext('2d');
+                const firstVideoTemp = document.createElement('video');
+                const firstVideoFile = this.videos[0];
+                if (!(firstVideoFile instanceof Blob || firstVideoFile instanceof File)) {
+                    throw new Error("First video for export is not a valid file/blob.");
+                }
+                const firstVideoSrc = URL.createObjectURL(firstVideoFile);
+                objectUrlsToRevoke.push(firstVideoSrc);
+                firstVideoTemp.src = firstVideoSrc;
+
+                await new Promise((resolve, reject) => {
+                    firstVideoTemp.onloadedmetadata = () => {
+                        if (firstVideoTemp.videoWidth === 0 || firstVideoTemp.videoHeight === 0) {
+                            reject(new Error("First video has invalid dimensions (0x0) for export."));
+                        } else {
+                            canvas.width = firstVideoTemp.videoWidth;
+                            canvas.height = firstVideoTemp.videoHeight;
+                            resolve();
+                        }
+                    };
+                    firstVideoTemp.onerror = () => reject(new Error("Failed to load first video metadata for export dimensions."));
+                });
+                
+                const canvasStream = canvas.captureStream(30); // 30 FPS
+                videoStreamTracks = canvasStream.getVideoTracks();
+                if (videoStreamTracks.length === 0) {
+                    console.warn("Canvas capture stream did not produce video tracks.");
+                }
+            }
+
+            if (this.audioFile) {
+                audioContext = new AudioContext();
+                destination = audioContext.createMediaStreamDestination();
+                exportAudioElement = document.createElement('audio');
+                const audioSrc = URL.createObjectURL(this.audioFile);
+                objectUrlsToRevoke.push(audioSrc);
+                exportAudioElement.src = audioSrc;
+                exportAudioElement.crossOrigin = "anonymous"; // Important for MediaElementSourceNode
+
+                await new Promise((resolve, reject) => {
+                    exportAudioElement.onloadedmetadata = resolve;
+                    exportAudioElement.onerror = () => reject(new Error("Failed to load audio for export."));
+                });
+                const sourceNode = audioContext.createMediaElementSource(exportAudioElement);
+                sourceNode.connect(destination);
+                if (destination.stream.getAudioTracks().length > 0) {
+                    audioStreamTracks = destination.stream.getAudioTracks();
+                } else {
+                    console.warn("Audio destination stream has no audio tracks for export.");
+                }
+            }
+
+            const combinedStreamTracks = [...videoStreamTracks, ...audioStreamTracks];
+            if (combinedStreamTracks.length === 0) {
+                throw new Error("No tracks (video or audio) to record for export.");
+            }
+            
+            const combinedStream = new MediaStream(combinedStreamTracks);
+            
+            let recorderMimeType = '';
+            if (videoStreamTracks.length > 0 && audioStreamTracks.length > 0) {
+                recorderMimeType = 'video/webm;codecs=vp8,opus';
+                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'video/webm;codecs=vp9,opus'; // Try vp9
+                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'video/webm;codecs=vp8'; // Fallback video only
+            } else if (videoStreamTracks.length > 0) {
+                recorderMimeType = 'video/webm;codecs=vp8';
+                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'video/webm;codecs=vp9';
+            } else if (audioStreamTracks.length > 0) {
+                recorderMimeType = 'audio/webm;codecs=opus';
+                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'audio/webm'; // Broader audio fallback
+            }
+
+            if (!recorderMimeType || !MediaRecorder.isTypeSupported(recorderMimeType)) {
+                 throw new Error(`Could not find a supported MediaRecorder MIME type. Attempted: ${recorderMimeType}`);
+            }
+            
+            this.debugElement.textContent = `Status: Recording export (${recorderMimeType})...`;
+
+            const recorder = new MediaRecorder(combinedStream, {
+                mimeType: recorderMimeType,
+                videoBitsPerSecond: videoStreamTracks.length > 0 ? 2500000 : undefined,
+                audioBitsPerSecond: audioStreamTracks.length > 0 ? 128000 : undefined,
+            });
+            
+            const chunks = [];
+            recorder.ondataavailable = e => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+            
+            return new Promise(async (resolve, reject) => {
+                recorder.onstop = () => {
+                    objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
+                    if (audioContext) audioContext.close().catch(e => console.warn("Error closing audio context:", e));
+                    
+                    if (chunks.length > 0) {
+                        const blob = new Blob(chunks, { type: recorderMimeType });
+                        this.debugElement.textContent = "Status: Export finished.";
+                        resolve(blob);
+                    } else {
+                        this.debugElement.textContent = "Status: Export failed (no data recorded).";
+                        reject(new Error("Export resulted in an empty file. No data was recorded."));
+                    }
+                };
+                recorder.onerror = (e) => {
+                    objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
+                    if (audioContext) audioContext.close().catch(err => console.warn("Error closing audio context on recorder error:", err));
+                    console.error('MediaRecorder error during export:', e);
+                    this.logError('Ошибка при экспорте: ' + (e.name || 'Unknown recorder error'));
+                    reject(e.error || new Error("MediaRecorder encountered an error."));
+                };
+
+                recorder.start();
+                
+                let renderPromises = [];
+
+                if (exportAudioElement) {
+                    exportAudioElement.currentTime = 0;
+                    renderPromises.push(exportAudioElement.play().catch(e => console.warn("Export audio play failed during start", e)));
+                }
+
+                if (videoStreamTracks.length > 0 && ctx && canvas) {
+                    this.debugElement.textContent = "Status: Rendering video frames for export...";
+                    for (let i = 0; i < this.videos.length; i++) {
+                        const videoFile = this.videos[i];
+                        if (!(videoFile instanceof Blob || videoFile instanceof File)) {
+                            console.warn(`Skipping invalid video item ${i+1} in export.`);
+                            continue;
+                        }
+                        const segmentVideo = document.createElement('video');
+                        const segmentSrc = URL.createObjectURL(videoFile);
+                        objectUrlsToRevoke.push(segmentSrc); // Add to revoke list
+                        segmentVideo.src = segmentSrc;
+                        segmentVideo.muted = true; // Important for frame-by-frame rendering
+
+                        try {
+                            await new Promise((res, rej) => {
+                                segmentVideo.onloadedmetadata = res;
+                                segmentVideo.onerror = () => rej(new Error(`Failed to load segment ${i+1} for export.`));
+                            });
+                            
+                            // Play and draw frame by frame
+                            segmentVideo.currentTime = 0;
+                            await segmentVideo.play(); // Start playing to enable frame updates
+
+                            while (segmentVideo.currentTime < segmentVideo.duration && !segmentVideo.ended) {
+                                if (segmentVideo.videoWidth > 0 && segmentVideo.videoHeight > 0) {
+                                    ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
+                                }
+                                // Wait for the next frame
+                                await new Promise(r => segmentVideo.requestVideoFrameCallback ? segmentVideo.requestVideoFrameCallback(r) : requestAnimationFrame(r));
+                                if (recorder.state !== 'recording') break; // Stop if recorder stopped
+                            }
+                            segmentVideo.pause();
+                        } catch (segmentError) {
+                            console.error(`Error processing video segment ${i+1} for export:`, segmentError);
+                        }
+                    }
+                }
+                
+                // Wait for all initial play promises (mainly for audio)
+                await Promise.all(renderPromises).catch(e => console.warn("Error during initial play for export:", e));
+
+                // Determine when to stop the recorder
+                const stopDelay = (this.totalDuration * 1000) + 1500; // totalDuration in ms + 1.5s buffer
+
+                setTimeout(() => {
+                    if (recorder.state === 'recording') {
+                        recorder.stop();
+                    }
+                }, Math.max(500, stopDelay)); // Ensure a minimum delay
+            });
+        } catch (error) {
+            objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
+            if (audioContext && audioContext.state !== 'closed') audioContext.close().catch(e => console.warn("Error closing audio context in catch block:", e));
+            console.error('Outer Export error:', error);
+            this.logError('Ошибка при экспорте видео: ' + error.message);
+            this.debugElement.textContent = "Status: Export failed. " + error.message;
+            return null; 
         }
     }
 }
