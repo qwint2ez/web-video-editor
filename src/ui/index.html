@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QWINT's VIDEO EDITOR</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/timeline.css">
 </head>
 <body>
   <header class="hidden">
@@ -16,6 +17,18 @@
     <input type="file" id="videoInput" accept="video/*" multiple style="display: none;">
     <input type="file" id="audioInput" accept="audio/*" style="display: none;">
     <label for="audioInput" class="upload-btn hidden">Upload Audio</label>
+  </div>
+
+  <!-- New: Uploaded videos list and timeline controls -->
+  <div id="uploadedVideosSection" class="hidden">
+    <h3>Uploaded Videos</h3>
+    <ul id="uploadedVideosList"></ul>
+    <button id="addToTimelineBtn">Add Selected to Timeline</button>
+  </div>
+
+  <div id="timelineVisualization" class="hidden">
+    <h3>Timeline</h3>
+    <div id="timelineBar"></div>
   </div>
 
   <p id="debug">Status: Waiting for video upload...</p>

@@ -4,6 +4,7 @@ import { TextOverlay } from './textOverlay.js';
 import { VideoLoader } from './videoLoader.js';
 import { VideoMerger } from './videoMerger.js';
 import { VideoTrimmer } from './videoTrimmer.js';
+import { TimelineManager } from './timelineManager.js';
 
 export class VideoEditor {
     constructor(dependencies) {
@@ -15,11 +16,20 @@ export class VideoEditor {
             merger: new VideoMerger(dependencies),
             trimmer: new VideoTrimmer(dependencies),
         };
-        this.currentVideoFiles = [];
+        this.timeline = new TimelineManager();
+        this.dependencies = dependencies;
     }
 
-    loadVideos(files) {
+    async loadVideos(files) {
         this.currentVideoFiles = Array.from(files);
+        this.timeline = new TimelineManager();
+        
+        for (const file of this.currentVideoFiles) {
+            this.timeline.addVideo(file);
+        }
+        
+        await this.timeline.loadDurations();
+        
         if (this.currentVideoFiles.length === 1) {
             this.processors.loader.process({ file: this.currentVideoFiles[0] });
         } else if (this.currentVideoFiles.length > 1) {
@@ -54,5 +64,9 @@ export class VideoEditor {
             ? this.processors.trimmer.startTimeValue + time
             : this.processors.merger.seekTo(time);
         this.processors.trimmer.videoElement.currentTime = newTime;
+    }
+
+    formatTime(seconds) {
+        return this.timeline.formatTime(seconds);
     }
 }
