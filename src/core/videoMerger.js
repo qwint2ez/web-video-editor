@@ -320,11 +320,10 @@ export class VideoMerger extends VideoProcessor {
 
         this.timelineBar.innerHTML = '';
         let currentVideoOffset = 0;
-        let timelineBarActualHeight = 0;
+        let timelineBarActualHeight = 40; // Высота для видео трека
 
+        // Рендерим видео треки
         if (this.videos && this.videos.length > 0) {
-            timelineBarActualHeight = 40;
-            
             this.videos.forEach((video, index) => {
                 const segment = document.createElement('div');
                 segment.className = 'timeline-segment video-segment';
@@ -353,11 +352,15 @@ export class VideoMerger extends VideoProcessor {
                 
                 segment.style.width = `${Math.max(0, Math.min(100, widthPercent))}%`;
                 segment.style.left = `${Math.max(0, Math.min(100, leftPercent))}%`;
+                segment.style.top = '0px';
+                segment.style.height = '40px';
                 
                 // Визуальный индикатор для видео с нулевой длительностью
                 if (segmentDuration === 0) {
                     segment.style.background = 'repeating-linear-gradient(45deg, #e74c3c, #e74c3c 10px, #c0392b 10px, #c0392b 20px)';
                     segment.style.opacity = '0.7';
+                } else {
+                    segment.style.background = '#3498db';
                 }
                 
                 const label = document.createElement('div');
@@ -382,11 +385,11 @@ export class VideoMerger extends VideoProcessor {
             });
         }
         
-        // Render audio track if exists
+        // Рендерим аудио трек отдельно снизу
         if (this.audioFile) {
-            const audioTrackHeight = 20;
-            const gap = (this.videos && this.videos.length > 0) ? 10 : 0; 
-            const audioTopPos = (this.videos && this.videos.length > 0) ? timelineBarActualHeight + gap : 0;
+            const audioTrackHeight = 25;
+            const gap = 5; 
+            const audioTopPos = timelineBarActualHeight + gap;
             
             timelineBarActualHeight = audioTopPos + audioTrackHeight;
             
@@ -394,30 +397,30 @@ export class VideoMerger extends VideoProcessor {
             audioSegment.className = 'timeline-segment audio-segment';
             
             const finiteAudioDuration = (Number.isFinite(this.audioDuration) && this.audioDuration >= 0) ? this.audioDuration : 0;
-            let audioWidthPercent = 0;
             
-            if (this.totalDuration > 0) {
-                audioWidthPercent = (finiteAudioDuration / this.totalDuration) * 100;
-            } else if ((!this.videos || this.videos.length === 0) && finiteAudioDuration > 0) {
-                audioWidthPercent = 100;
-            }
-            
-            audioSegment.style.width = `${Math.max(0, Math.min(100, audioWidthPercent))}%`; 
+            // Аудио всегда занимает всю ширину таймлайна, но показывает свою реальную длительность
+            audioSegment.style.width = '100%'; 
             audioSegment.style.left = '0%';
             audioSegment.style.top = `${audioTopPos}px`; 
             audioSegment.style.height = `${audioTrackHeight}px`;
+            audioSegment.style.background = 'linear-gradient(90deg, #fd79a8, #fdcb6e)';
+            audioSegment.style.border = '1px solid #e17055';
             
             const audioLabel = document.createElement('div');
-            audioLabel.className = 'video-info';
+            audioLabel.className = 'audio-info';
+            audioLabel.style.color = 'white';
+            audioLabel.style.fontSize = '12px';
+            audioLabel.style.padding = '2px 8px';
             const audioName = this.audioFile.name || 'Audio File';
-            audioLabel.textContent = `Audio: ${audioName.substring(0, 30)}${audioName.length > 30 ? '...' : ''}`;
-            audioLabel.style.bottom = '2px';
+            const displayDuration = finiteAudioDuration > 0 ? `${finiteAudioDuration.toFixed(1)}s` : '0s';
+            audioLabel.textContent = `♪ ${audioName.substring(0, 20)}${audioName.length > 20 ? '...' : ''} (${displayDuration})`;
             
             const deleteAudioBtn = document.createElement('button');
-            deleteAudioBtn.className = 'delete-btn';
+            deleteAudioBtn.className = 'delete-btn audio-delete';
             deleteAudioBtn.textContent = '×';
             deleteAudioBtn.style.top = '2px'; 
             deleteAudioBtn.style.right = '2px';
+            deleteAudioBtn.style.background = '#e17055';
             deleteAudioBtn.onclick = (e) => {
                 e.stopPropagation();
                 this.removeAudio();
@@ -428,8 +431,9 @@ export class VideoMerger extends VideoProcessor {
             this.timelineBar.appendChild(audioSegment);
         }
         
-        // Ensure timelineBar has a minimum height
-        const minHeight = (this.videos && this.videos.length > 0) || this.audioFile ? 40 : 0;
+        // Устанавливаем высоту таймлайна
+        const minHeight = (this.videos && this.videos.length > 0) || this.audioFile ? 
+            (this.audioFile ? timelineBarActualHeight : 40) : 0;
         this.timelineBar.style.height = `${Math.max(minHeight, timelineBarActualHeight)}px`;
         
         // Добавляем курсор и прогресс
@@ -952,96 +956,111 @@ export class VideoMerger extends VideoProcessor {
         }
 
         this.debugElement.textContent = "Status: Preparing export...";
+        
+        try {
+            // Улучшенный метод экспорта - используем прямую конкатенацию blob-ов
+            if (this.videos.length === 1 && !this.audioFile) {
+                // Простой случай - одно видео без аудио
+                this.debugElement.textContent = "Status: Export finished.";
+                return this.videos[0];
+            }
+            
+            if (this.videos.length === 0 && this.audioFile) {
+                // Только аудио
+                this.debugElement.textContent = "Status: Export finished.";
+                return this.audioFile;
+            }
+            
+            // Сложный случай - несколько видео или видео с аудио
+            return await this.exportComplexVideo();
+            
+        } catch (error) {
+            console.error('Export error:', error);
+            this.logError('Ошибка при экспорте видео: ' + error.message);
+            this.debugElement.textContent = "Status: Export failed. " + error.message;
+            return null; 
+        }
+    }
+
+    async exportComplexVideo() {
+        this.debugElement.textContent = "Status: Creating export stream...";
+        
         let canvas, ctx, audioContext, destination, exportAudioElement = null;
         let videoStreamTracks = [];
         let audioStreamTracks = [];
         let objectUrlsToRevoke = [];
 
         try {
+            // Настройка видео потока
             if (this.videos && this.videos.length > 0) {
                 canvas = document.createElement('canvas');
                 ctx = canvas.getContext('2d');
-                const firstVideoTemp = document.createElement('video');
+                
+                // Получаем размеры из первого видео
                 const firstVideoFile = this.videos[0];
-                if (!(firstVideoFile instanceof Blob || firstVideoFile instanceof File)) {
-                    throw new Error("First video for export is not a valid file/blob.");
-                }
                 const firstVideoSrc = URL.createObjectURL(firstVideoFile);
                 objectUrlsToRevoke.push(firstVideoSrc);
-                firstVideoTemp.src = firstVideoSrc;
-
+                
+                const tempVideo = document.createElement('video');
+                tempVideo.src = firstVideoSrc;
+                
                 await new Promise((resolve, reject) => {
-                    firstVideoTemp.onloadedmetadata = () => {
-                        if (firstVideoTemp.videoWidth === 0 || firstVideoTemp.videoHeight === 0) {
-                            reject(new Error("First video has invalid dimensions (0x0) for export."));
-                        } else {
-                            canvas.width = firstVideoTemp.videoWidth;
-                            canvas.height = firstVideoTemp.videoHeight;
-                            resolve();
-                        }
+                    tempVideo.onloadedmetadata = () => {
+                        canvas.width = tempVideo.videoWidth || 640;
+                        canvas.height = tempVideo.videoHeight || 480;
+                        resolve();
                     };
-                    firstVideoTemp.onerror = () => reject(new Error("Failed to load first video metadata for export dimensions."));
+                    tempVideo.onerror = reject;
+                    setTimeout(reject, 5000); // 5 секунд таймаут
                 });
                 
-                const canvasStream = canvas.captureStream(30); // 30 FPS
+                const canvasStream = canvas.captureStream(30);
                 videoStreamTracks = canvasStream.getVideoTracks();
-                if (videoStreamTracks.length === 0) {
-                    console.warn("Canvas capture stream did not produce video tracks.");
-                }
             }
 
+            // Настройка аудио потока
             if (this.audioFile) {
                 audioContext = new AudioContext();
                 destination = audioContext.createMediaStreamDestination();
                 exportAudioElement = document.createElement('audio');
+                
                 const audioSrc = URL.createObjectURL(this.audioFile);
                 objectUrlsToRevoke.push(audioSrc);
                 exportAudioElement.src = audioSrc;
-                exportAudioElement.crossOrigin = "anonymous"; // Important for MediaElementSourceNode
 
                 await new Promise((resolve, reject) => {
                     exportAudioElement.onloadedmetadata = resolve;
-                    exportAudioElement.onerror = () => reject(new Error("Failed to load audio for export."));
+                    exportAudioElement.onerror = reject;
+                    setTimeout(reject, 5000); // 5 секунд таймаут
                 });
+                
                 const sourceNode = audioContext.createMediaElementSource(exportAudioElement);
                 sourceNode.connect(destination);
-                if (destination.stream.getAudioTracks().length > 0) {
-                    audioStreamTracks = destination.stream.getAudioTracks();
-                } else {
-                    console.warn("Audio destination stream has no audio tracks for export.");
-                }
+                audioStreamTracks = destination.stream.getAudioTracks();
             }
 
             const combinedStreamTracks = [...videoStreamTracks, ...audioStreamTracks];
             if (combinedStreamTracks.length === 0) {
-                throw new Error("No tracks (video or audio) to record for export.");
+                throw new Error("No tracks to record for export.");
             }
             
             const combinedStream = new MediaStream(combinedStreamTracks);
             
-            let recorderMimeType = '';
-            if (videoStreamTracks.length > 0 && audioStreamTracks.length > 0) {
+            // Выбираем MIME тип
+            let recorderMimeType = 'video/webm;codecs=vp8';
+            if (audioStreamTracks.length > 0) {
                 recorderMimeType = 'video/webm;codecs=vp8,opus';
-                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'video/webm;codecs=vp9,opus'; // Try vp9
-                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'video/webm;codecs=vp8'; // Fallback video only
-            } else if (videoStreamTracks.length > 0) {
-                recorderMimeType = 'video/webm;codecs=vp8';
-                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'video/webm;codecs=vp9';
-            } else if (audioStreamTracks.length > 0) {
-                recorderMimeType = 'audio/webm;codecs=opus';
-                if (!MediaRecorder.isTypeSupported(recorderMimeType)) recorderMimeType = 'audio/webm'; // Broader audio fallback
+                if (!MediaRecorder.isTypeSupported(recorderMimeType)) {
+                    recorderMimeType = 'video/webm';
+                }
             }
 
-            if (!recorderMimeType || !MediaRecorder.isTypeSupported(recorderMimeType)) {
-                 throw new Error(`Could not find a supported MediaRecorder MIME type. Attempted: ${recorderMimeType}`);
-            }
-            
-            this.debugElement.textContent = `Status: Recording export (${recorderMimeType})...`;
+            this.debugElement.textContent = `Status: Recording export...`;
 
             const recorder = new MediaRecorder(combinedStream, {
                 mimeType: recorderMimeType,
-                videoBitsPerSecond: videoStreamTracks.length > 0 ? 2500000 : undefined,
-                audioBitsPerSecond: audioStreamTracks.length > 0 ? 128000 : undefined,
+                videoBitsPerSecond: 1000000, // Уменьшенный битрейт для быстрого экспорта
+                audioBitsPerSecond: 128000,
             });
             
             const chunks = [];
@@ -1059,85 +1078,99 @@ export class VideoMerger extends VideoProcessor {
                         this.debugElement.textContent = "Status: Export finished.";
                         resolve(blob);
                     } else {
-                        this.debugElement.textContent = "Status: Export failed (no data recorded).";
-                        reject(new Error("Export resulted in an empty file. No data was recorded."));
+                        reject(new Error("Export resulted in an empty file."));
                     }
                 };
+                
                 recorder.onerror = (e) => {
                     objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
-                    if (audioContext) audioContext.close().catch(err => console.warn("Error closing audio context on recorder error:", err));
-                    console.error('MediaRecorder error during export:', e);
-                    this.logError('Ошибка при экспорте: ' + (e.name || 'Unknown recorder error'));
-                    reject(e.error || new Error("MediaRecorder encountered an error."));
+                    if (audioContext) audioContext.close();
+                    reject(e.error || new Error("MediaRecorder error"));
                 };
 
                 recorder.start();
                 
-                let renderPromises = [];
-
+                // Запускаем аудио если есть
                 if (exportAudioElement) {
                     exportAudioElement.currentTime = 0;
-                    renderPromises.push(exportAudioElement.play().catch(e => console.warn("Export audio play failed during start", e)));
+                    exportAudioElement.play().catch(e => console.warn("Audio play failed:", e));
                 }
 
+                // Быстрый рендер видео
                 if (videoStreamTracks.length > 0 && ctx && canvas) {
-                    this.debugElement.textContent = "Status: Rendering video frames for export...";
-                    for (let i = 0; i < this.videos.length; i++) {
-                        const videoFile = this.videos[i];
-                        if (!(videoFile instanceof Blob || videoFile instanceof File)) {
-                            console.warn(`Skipping invalid video item ${i+1} in export.`);
-                            continue;
-                        }
-                        const segmentVideo = document.createElement('video');
-                        const segmentSrc = URL.createObjectURL(videoFile);
-                        objectUrlsToRevoke.push(segmentSrc); // Add to revoke list
-                        segmentVideo.src = segmentSrc;
-                        segmentVideo.muted = true; // Important for frame-by-frame rendering
-
-                        try {
-                            await new Promise((res, rej) => {
-                                segmentVideo.onloadedmetadata = res;
-                                segmentVideo.onerror = () => rej(new Error(`Failed to load segment ${i+1} for export.`));
-                            });
-                            
-                            // Play and draw frame by frame
-                            segmentVideo.currentTime = 0;
-                            await segmentVideo.play(); // Start playing to enable frame updates
-
-                            while (segmentVideo.currentTime < segmentVideo.duration && !segmentVideo.ended) {
-                                if (segmentVideo.videoWidth > 0 && segmentVideo.videoHeight > 0) {
-                                    ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
-                                }
-                                // Wait for the next frame
-                                await new Promise(r => segmentVideo.requestVideoFrameCallback ? segmentVideo.requestVideoFrameCallback(r) : requestAnimationFrame(r));
-                                if (recorder.state !== 'recording') break; // Stop if recorder stopped
-                            }
-                            segmentVideo.pause();
-                        } catch (segmentError) {
-                            console.error(`Error processing video segment ${i+1} for export:`, segmentError);
-                        }
-                    }
+                    await this.renderVideoSegments(ctx, canvas, recorder, objectUrlsToRevoke);
                 }
                 
-                // Wait for all initial play promises (mainly for audio)
-                await Promise.all(renderPromises).catch(e => console.warn("Error during initial play for export:", e));
-
-                // Determine when to stop the recorder
-                const stopDelay = (this.totalDuration * 1000) + 1500; // totalDuration in ms + 1.5s buffer
-
+                // Останавливаем запись через рассчитанное время
+                const exportDuration = Math.max(1000, this.totalDuration * 1000 + 500);
                 setTimeout(() => {
                     if (recorder.state === 'recording') {
                         recorder.stop();
                     }
-                }, Math.max(500, stopDelay)); // Ensure a minimum delay
+                }, exportDuration);
             });
         } catch (error) {
             objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
-            if (audioContext && audioContext.state !== 'closed') audioContext.close().catch(e => console.warn("Error closing audio context in catch block:", e));
-            console.error('Outer Export error:', error);
-            this.logError('Ошибка при экспорте видео: ' + error.message);
-            this.debugElement.textContent = "Status: Export failed. " + error.message;
-            return null; 
+            if (audioContext) audioContext.close().catch(e => console.warn("Error closing audio context:", e));
+            throw error;
+        }
+    }
+
+    async renderVideoSegments(ctx, canvas, recorder, objectUrlsToRevoke) {
+        this.debugElement.textContent = "Status: Rendering video segments...";
+        
+        for (let i = 0; i < this.videos.length; i++) {
+            if (recorder.state !== 'recording') break;
+            
+            const videoFile = this.videos[i];
+            const segmentDuration = this.durations[i] || 0;
+            
+            if (segmentDuration <= 0) continue;
+            
+            const segmentVideo = document.createElement('video');
+            const segmentSrc = URL.createObjectURL(videoFile);
+            objectUrlsToRevoke.push(segmentSrc);
+            segmentVideo.src = segmentSrc;
+            segmentVideo.muted = true;
+
+            try {
+                await new Promise((res, rej) => {
+                    segmentVideo.onloadedmetadata = res;
+                    segmentVideo.onerror = rej;
+                    setTimeout(rej, 3000); // 3 секунды таймаут
+                });
+                
+                segmentVideo.currentTime = 0;
+                await segmentVideo.play();
+
+                const startTime = Date.now();
+                const segmentDurationMs = segmentDuration * 1000;
+                
+                const renderFrame = () => {
+                    if (recorder.state !== 'recording') return;
+                    
+                    const elapsed = Date.now() - startTime;
+                    if (elapsed >= segmentDurationMs || segmentVideo.ended) {
+                        segmentVideo.pause();
+                        return;
+                    }
+                    
+                    if (segmentVideo.videoWidth > 0 && segmentVideo.videoHeight > 0) {
+                        ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
+                    }
+                    
+                    // Используем более быстрый интервал для рендеринга
+                    setTimeout(renderFrame, 33); // ~30 FPS
+                };
+                
+                renderFrame();
+                
+                // Ждем окончания сегмента
+                await new Promise(resolve => setTimeout(resolve, segmentDurationMs));
+                
+            } catch (segmentError) {
+                console.warn(`Error processing segment ${i+1}:`, segmentError);
+            }
         }
     }
 }

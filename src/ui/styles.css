@@ -63,50 +63,54 @@ body {
 
 #timelineBar {
     position: relative;
-    /* Height will be adjusted by JS or set to accommodate video and audio tracks */
-    min-height: 40px; /* Minimum height for video track */
-    margin-top: 20px;
-    background: #2a2a2a;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
     border-radius: 4px;
-    cursor: pointer;
-    overflow: hidden; /* Hide parts of segments if bar isn't tall enough initially */
+    margin: 10px 0;
+    min-height: 40px;
 }
 
 .timeline-segment {
     position: absolute;
-    /* height: 100%; */ /* Height will be specific to video/audio */
-    border-right: 2px solid rgba(255, 255, 255, 0.2);
-    transition: all 0.2s;
-    cursor: pointer;
+    height: 40px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
     box-sizing: border-box;
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-.video-segment { /* Specific class for video segments */
-    height: 40px; /* Default height for video segments */
-    top: 0;
+.timeline-segment:hover {
+    border-color: #007bff;
+    box-shadow: 0 2px 4px rgba(0,123,255,0.3);
+}
+
+.video-segment {
     background: linear-gradient(135deg, #3498db, #2980b9);
-}
-
-.audio-segment { /* Specific class for audio segments */
-    height: 20px;
-    /* top will be set by JS: 0px if no videos, 50px (40px video + 10px gap) if videos exist */
-    background: linear-gradient(135deg, #2ecc71, #27ae60);
-    z-index: 1; /* Ensure audio is visually distinct if overlapping slightly during render */
-}
-
-.video-info {
-    position: absolute;
-    bottom: 5px;
-    left: 5px;
     color: white;
-    font-size: 12px;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.audio-segment {
+    background: linear-gradient(135deg, #fd79a8, #fdcb6e);
+    color: white;
+    border: 1px solid #e17055;
+}
+
+.video-info, .audio-info {
+    font-size: 11px;
+    font-weight: 500;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
 }
 
 .delete-btn {
-    position: absolute;
-    right: 5px;
-    top: 5px;
     background: rgba(231, 76, 60, 0.8);
     color: white;
     border: none;
@@ -114,12 +118,23 @@ body {
     width: 20px;
     height: 20px;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease;
 }
 
-.timeline-segment:hover .delete-btn {
-    opacity: 1;
+.delete-btn:hover {
+    background: rgba(231, 76, 60, 1);
+}
+
+.audio-delete {
+    background: rgba(225, 112, 85, 0.8);
+}
+
+.audio-delete:hover {
+    background: rgba(225, 112, 85, 1);
 }
 
 .timeline-progress {
