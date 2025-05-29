@@ -396,7 +396,8 @@ header h1 {
 
 /* Диалоги экспорта и выбора видео */
 .export-dialog,
-.video-selection-dialog {
+.video-selection-dialog,
+.dialog-modal { /* Added .dialog-modal for general dialog styling */
     position: fixed;
     top: 0;
     left: 0;
@@ -417,7 +418,57 @@ header h1 {
     width: 90%;
     max-height: 80vh;
     overflow-y: auto;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3); /* Added shadow for better appearance */
 }
+
+/* Specific styles for Save Format Dialog */
+.save-format-dialog .dialog-content {
+    max-width: 400px; /* Smaller width for simpler dialog */
+}
+
+.save-format-dialog h3 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: #333;
+    text-align: center;
+    font-size: 1.4rem;
+}
+
+.save-format-dialog .option-group {
+    margin-bottom: 1.5rem;
+}
+
+.save-format-dialog .option-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #555;
+}
+
+.save-format-dialog .option-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 1rem;
+    background-color: #f9f9f9;
+}
+
+.save-format-dialog .dialog-buttons {
+    display: flex;
+    justify-content: flex-end; /* Align buttons to the right */
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+/* Ensure action-btn and cancel-btn from dialog-buttons look good here */
+.save-format-dialog .action-btn,
+.save-format-dialog .cancel-btn {
+    padding: 0.75rem 1.5rem; /* Consistent padding */
+    font-size: 1rem; /* Consistent font size */
+    /* Gradients are already defined, but ensure they apply if not overridden */
+}
+
 
 .export-options {
     margin: 1rem 0;
@@ -570,4 +621,32 @@ header h1 {
 
 .loading {
     animation: pulse 1.5s infinite;
+}
+
+/* Project Management Controls */
+.project-management-controls {
+    max-width: 600px; /* Or any other suitable width */
+    margin: 2rem auto; /* Centers the block */
+    padding: 1.5rem;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.project-management-controls h3 {
+    margin-bottom: 1rem;
+    color: #2c3e50;
+    font-size: 1.2rem;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 0.5rem;
+}
+
+.project-management-controls .action-btn,
+.project-management-controls label.action-btn {
+    margin-top: 0.5rem;
+    display: inline-block; /* Ensure labels behave like buttons */
+}
+
+.project-management-controls input[type="file"] {
+    display: none; /* Already there, just confirming */
 }

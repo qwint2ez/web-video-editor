@@ -275,26 +275,82 @@ function updateTotalDurationDisplay() {
 }
 
 // --- Project Save/Load Logic ---
+
+// NEW function to show save format selection dialog
+function showSaveFormatDialog() {
+    return new Promise((resolve) => {
+        const dialog = document.createElement('div');
+        dialog.className = 'dialog-modal save-format-dialog'; // Added dialog-modal class
+
+        dialog.innerHTML = `
+            <div class="dialog-content">
+                <h3>Select Save Format</h3>
+                <div class="option-group">
+                    <label for="saveFormatSelect">Format:</label>
+                    <select id="saveFormatSelect">
+                        <option value="json">JSON (.json)</option>
+                        <option value="xml">XML (.xml)</option>
+                    </select>
+                </div>
+                <div class="dialog-buttons">
+                    <button id="confirmSaveFormatBtn" class="action-btn">Save</button>
+                    <button id="cancelSaveFormatBtn" class="cancel-btn">Cancel</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(dialog);
+
+        const confirmBtn = dialog.querySelector('#confirmSaveFormatBtn');
+        const cancelBtn = dialog.querySelector('#cancelSaveFormatBtn');
+        const formatSelect = dialog.querySelector('#saveFormatSelect');
+
+        confirmBtn.addEventListener('click', () => {
+            const selectedFormat = formatSelect.value;
+            dialog.remove();
+            resolve(selectedFormat);
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            dialog.remove();
+            resolve(null); // User cancelled
+        });
+    });
+}
+
 async function handleSaveProject() {
     if (!state.videoEditor) {
         utils.showError("Editor not initialized.");
         return;
     }
+
+    const selectedFormat = await showSaveFormatDialog();
+    if (!selectedFormat) {
+        utils.showStatus("Save operation cancelled.");
+        return; // User cancelled or closed the dialog
+    }
+
     try {
-        utils.showStatus("Saving project...");
-        const projectJson = await state.videoEditor.saveProject();
-        const blob = new Blob([projectJson], { type: 'application/json' });
+        utils.showStatus(`Saving project as ${selectedFormat.toUpperCase()}...`);
+        const projectData = await state.videoEditor.saveProject(selectedFormat); // Pass the format
+        
+        let mimeType = 'application/json';
+        if (selectedFormat === 'xml') {
+            mimeType = 'application/xml';
+        }
+
+        const blob = new Blob([projectData], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `video_project_${Date.now()}.json`;
+        a.download = `video_project_${Date.now()}.${selectedFormat}`; // Use selected format for extension
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        utils.showStatus("Project saved successfully.");
+        utils.showStatus(`Project saved successfully as ${selectedFormat.toUpperCase()}.`);
     } catch (error) {
-        utils.showError("Failed to save project: " + error.message);
+        utils.showError(`Failed to save project as ${selectedFormat.toUpperCase()}: ` + error.message);
         console.error("Save project error:", error);
     }
 }
@@ -312,10 +368,21 @@ async function handleLoadProjectFile(event) {
     // Reset file input to allow loading the same file again if needed
     event.target.value = null; 
 
+    const fileName = file.name.toLowerCase();
+    let format = 'json'; // Default format
+    if (fileName.endsWith('.xml')) {
+        format = 'xml';
+    } else if (!fileName.endsWith('.json')) {
+        // If not .xml and not .json, try to infer or warn
+        // For now, we'll assume json if not xml, but a warning might be good
+        utils.showStatus(`Warning: Unknown project file extension for "${file.name}". Assuming ${format} format.`);
+    }
+
+
     try {
-        utils.showStatus("Reading project file...");
-        const jsonContent = await file.text();
-        const prepResult = await state.videoEditor.prepareLoadProject(jsonContent);
+        utils.showStatus(`Reading project file (${format.toUpperCase()})...`);
+        const fileContent = await file.text();
+        const prepResult = await state.videoEditor.prepareLoadProject(fileContent, format); // Pass format
         
         if (prepResult && prepResult.files && prepResult.files.length > 0) {
             requiredFilesForLoad = prepResult.files;
@@ -336,8 +403,8 @@ async function handleLoadProjectFile(event) {
         }
 
     } catch (error) {
-        utils.showError("Failed to load project: " + error.message);
-        console.error("Load project error:", error);
+        utils.showError(`Failed to load project (${format.toUpperCase()}): ` + error.message);
+        console.error(`Load project error (${format.toUpperCase()}):`, error);
         requiredFilesForLoad = null;
         utils.hideElement(elements.confirmLoadedFilesBtn);
     }
@@ -433,7 +500,7 @@ function initializeApp() {
         initializePlayerControls();
         updateProjectManagementButtons(false); // Initial state: editor not active
         
-        utils.showStatus('Editor initialized successfully');
+        utils.showStatus('Editor initialized and ready for edits.');
     } catch (error) {
         console.error('Failed to initialize:', error);
         utils.showError('Failed to initialize editor');

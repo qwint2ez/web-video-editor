@@ -210,7 +210,7 @@ export class VideoEditor {
 
     // --- Project Serialization/Deserialization ---
 
-    async saveProject() {
+    async saveProject(format = 'json') {
         if (!this.processors.merger) {
             throw new Error("Video merger not initialized. Cannot save project.");
         }
@@ -254,12 +254,12 @@ export class VideoEditor {
             // Note: Volume, current playback time are not saved. Focus is on edit decisions.
         };
 
-        return this.projectSerializer.serialize(projectState);
+        return this.projectSerializer.serialize(projectState, format);
     }
 
-    async prepareLoadProject(jsonString) {
+    async prepareLoadProject(projectFileContent, format = 'json') {
         try {
-            const projectDefinition = this.projectSerializer.deserialize(jsonString);
+            const projectDefinition = this.projectSerializer.deserialize(projectFileContent, format);
             if (!projectDefinition) {
                 throw new Error("Failed to parse project data.");
             }
