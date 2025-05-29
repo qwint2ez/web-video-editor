@@ -30,9 +30,12 @@ export class VideoTrimmer extends VideoProcessor {
         }
 
         try {
+            // Показываем статус обрезки
+            this.debugElement.textContent = `Status: Global trimming in progress... (${(endTime - startTime).toFixed(1)}s)`;
+            
             await this.merger.trim(startTime, endTime);
 
-            this.debugElement.textContent = `Status: Общая обрезка выполнена ${startTime.toFixed(2)}с - ${endTime.toFixed(2)}с`;
+            this.debugElement.textContent = `Status: Global trim completed ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s`;
         } catch (error) {
             this.logError('Ошибка при общей обрезке: ' + error.message);
             console.error(error);
