@@ -1,6 +1,6 @@
 import { VideoEditor } from '../core/videoEditor.js';
 
-// State management
+// State management 
 const state = {
     uploadedMedia: [],
     videoEditor: null
