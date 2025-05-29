@@ -329,4 +329,8 @@ export class VideoMerger extends VideoProcessor {
         }
         this.debugElement.textContent = 'Status: Audio removed';
     }
+
+    hasMedia() {
+        return (this.videos && this.videos.length > 0) || !!this.audioFile;
+    }
 }

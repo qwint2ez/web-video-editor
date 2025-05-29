@@ -29,6 +29,7 @@ const elements = {
     // Project Save/Load Buttons
     saveProjectBtn: document.getElementById('saveProjectBtn'),
     loadProjectInput: document.getElementById('loadProjectInput'), // File input for .json
+    loadProjectLabel: document.querySelector('label[for="loadProjectInput"]'), // Label for the load project input
     confirmLoadedFilesBtn: document.getElementById('confirmLoadedFilesBtn'), // Button to confirm files for project load
 
     // Контейнеры
@@ -87,6 +88,18 @@ const utils = {
     showElement: (element) => element?.classList.remove('hidden'),
     hideElement: (element) => element?.classList.add('hidden')
 };
+
+// NEW helper function to manage Save/Load project button visibility
+function updateProjectManagementButtons(isEditorActive) {
+    if (isEditorActive) {
+        utils.showElement(elements.saveProjectBtn);
+        utils.hideElement(elements.loadProjectLabel);
+        // The input elements.loadProjectInput is display:none via style, so no need to manage its visibility here
+    } else {
+        utils.hideElement(elements.saveProjectBtn);
+        utils.showElement(elements.loadProjectLabel);
+    }
+}
 
 // Функции обновления UI
 function updateTimelineProgress() {
@@ -227,31 +240,28 @@ async function handleAddToTimeline() {
     try {
         const videos = selectedMediaFiles.filter(m => m.type === 'video').map(m => m.file);
         const audioFile = selectedMediaFiles.find(m => m.type === 'audio')?.file;
-
-        const merger = state.videoEditor?.processors?.merger;
-        if (videos.length > 0 || audioFile || (merger && (merger.videos?.length > 0 || merger.audioFile)) ) {
-             [
-                elements.editorContainer,
-                elements.videoContainer,
-                elements.timelineContainer,
-            ].forEach(el => el && utils.showElement(el));
-        } else { 
-            utils.hideElement(elements.editorContainer);
-        }
         
         await state.videoEditor.loadVideos(videos, audioFile); 
 
         updateTotalDurationDisplay(); 
 
-        if (videos.length > 0 || audioFile) {
-            utils.showStatus('Media loaded successfully');
+        const editorIsActive = state.videoEditor?.processors?.merger?.hasMedia() ?? false;
+        updateProjectManagementButtons(editorIsActive);
+
+        if (editorIsActive) {
+            utils.showElement(elements.editorContainer);
+            utils.showStatus('Timeline updated successfully.');
         } else {
-            utils.showStatus('Timeline updated.');
+            utils.hideElement(elements.editorContainer);
+            utils.showStatus('Timeline empty. Add media or load a project.');
         }
 
     } catch (error) {
         utils.showError(error.message);
         console.error(error);
+        const editorIsActiveOnError = state.videoEditor?.processors?.merger?.hasMedia() ?? false;
+        updateProjectManagementButtons(editorIsActiveOnError);
+        utils.hideElement(elements.editorContainer); // Ensure editor is hidden on error
     }
 }
 
@@ -359,19 +369,32 @@ async function handleConfirmLoadedFiles() {
         }
     }
 
+    let editorIsActiveAfterLoad = false;
     if (allFilesFound) {
         try {
             await state.videoEditor.finalizeLoadProject(fileMap);
+            // finalizeLoadProject calls updateUIAfterMediaLoad, which shows/hides editorContainer
+            editorIsActiveAfterLoad = state.videoEditor?.processors?.merger?.hasMedia() ?? false;
             // Success message is handled by finalizeLoadProject
         } catch (error) {
             // Error message is handled by finalizeLoadProject or caught here
             utils.showError("Error during project finalization: " + error.message);
             console.error("Finalize project load error:", error);
+            editorIsActiveAfterLoad = false; // Ensure editor is not considered active
         }
     } else {
         if (requiredFilesForLoad.length > 0 && Object.keys(fileMap).length < requiredFilesForLoad.length) {
              utils.showError("Not all required files were provided or matched. Please check uploads and names.");
         }
+        editorIsActiveAfterLoad = false; // Editor not active if files are missing
+    }
+    
+    updateProjectManagementButtons(editorIsActiveAfterLoad);
+
+    if (editorIsActiveAfterLoad) {
+        utils.showElement(elements.editorContainer);
+    } else {
+        utils.hideElement(elements.editorContainer);
     }
     
     // Clean up after attempt
@@ -408,6 +431,7 @@ function initializeApp() {
         elements.confirmLoadedFilesBtn?.addEventListener('click', handleConfirmLoadedFiles);
         
         initializePlayerControls();
+        updateProjectManagementButtons(false); // Initial state: editor not active
         
         utils.showStatus('Editor initialized successfully');
     } catch (error) {
