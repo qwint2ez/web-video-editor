@@ -5,7 +5,7 @@ import { TextOverlay } from './textOverlay.js';
 import { VideoMerger } from './videoMerger.js';
 import { VideoTrimmer } from './videoTrimmer.js';
 import { VideoExporter } from './videoExporter.js';
-import { TimelineUIManager } from '../../src/core/timelineUIManager.js';
+import { TimelineUIManager } from '../../../src/core/timelineUIManager.js'; // Changed: Adjusted path for serving from node_modules
 import { ProjectSerializer } from './projectSerializer.js'; // Changed: Используем относительный путь
 // MediaInfo is used internally by VideoMerger now
 

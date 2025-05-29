@@ -1,4 +1,4 @@
-import { VideoEditor } from '../../utils-library/src/videoEditor.js'; //  Changed: Используем прямой относительный путь
+import { VideoEditor } from '../../node_modules/utils-library/src/index.js'; // Changed: Point to the library using a relative path
 
 // State management 
 const state = {
