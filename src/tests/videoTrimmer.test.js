@@ -29,7 +29,7 @@ describe('VideoTrimmer', () => {
 
   test('should throw error if end time is less than start time', () => {
     const trimmer = new VideoTrimmer(dependencies);
-    expect(() => trimmer.process({ startTime: 5 sacrificedTime: 3 })).toThrow('End time must be greater than start time');
+    expect(() => trimmer.process({ startTime: 5, endTime: 3 })).toThrow('End time must be greater than start time');
     expect(dependencies.debugElement.textContent).toBe('Status: Error! End time must be greater than start time');
   });
 
