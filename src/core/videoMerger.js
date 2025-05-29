@@ -11,11 +11,35 @@ export class VideoMerger extends VideoProcessor {
         this.isPlaying = false;
         this.audioFile = null;
         this.audioDuration = 0; 
-        // this.processors will be set by VideoEditor after all processors are instantiated
-        // Avoid using this.processors directly in the constructor for cross-processor dependencies
         
         this.timelineContainer = dependencies.timelineContainer;
         this.timelineBar = document.getElementById('timelineBar');
+        
+        // Define updateTimeDisplay as an instance property
+        this.updateTimeDisplay = () => {
+            const currentTime = this.getCurrentTime();
+            const validCurrentTime = Number.isFinite(currentTime) ? currentTime : 0;
+            const validTotalDuration = Number.isFinite(this.totalDuration) ? this.totalDuration : 0;
+
+            const percentage = (validTotalDuration > 0) ? (validCurrentTime / validTotalDuration) * 100 : 0;
+            const safePercentage = Math.max(0, Math.min(100, Number.isFinite(percentage) ? percentage : 0));
+
+            if (this.cursor) {
+                this.cursor.style.left = `${safePercentage}%`;
+            }
+            if (this.progress) {
+                this.progress.style.width = `${safePercentage}%`;
+            }
+
+            const currentTimeDisplay = document.getElementById('currentTime');
+            if (currentTimeDisplay) {
+                currentTimeDisplay.textContent = this.formatTime(validCurrentTime);
+            }
+            const totalDurationDisplay = document.getElementById('duration');
+            if (totalDurationDisplay) {
+                totalDurationDisplay.textContent = this.formatTime(validTotalDuration);
+            }
+        };
         
         // Bind event handler methods to this instance
         this.handleTimelineBarClick = this.handleTimelineBarClick.bind(this);
@@ -107,7 +131,12 @@ export class VideoMerger extends VideoProcessor {
             this.progress.className = 'timeline-progress';
             this.timelineBar.appendChild(this.progress);
         }
-        this.updateTimeDisplay(); 
+        // Now this.updateTimeDisplay will be defined
+        if (typeof this.updateTimeDisplay === 'function') {
+            this.updateTimeDisplay(); 
+        } else {
+            console.error("VideoMerger: updateTimeDisplay is not a function during setupTimelineElements");
+        }
     }
 
     async handleTimelineBarClick(e) {
@@ -241,23 +270,31 @@ export class VideoMerger extends VideoProcessor {
 
     async loadMediaDurations() {
         let videoTotalDurationNum = 0;
-        this.durations = []; 
+        const newDurations = [];
 
         if (this.videos && this.videos.length > 0) {
             console.log('Loading durations for videos:', this.videos.length);
             for (let i = 0; i < this.videos.length; i++) {
                 const videoFile = this.videos[i];
+                let duration = 0;
+
                 if (videoFile instanceof Blob || videoFile instanceof File) {
-                    const duration = await this.getVideoDuration(videoFile);
-                    console.log(`Video ${i+1} duration:`, duration);
-                    this.durations.push(duration); 
-                    videoTotalDurationNum += duration;
+                    // Prioritize _knownDuration if it exists and is valid
+                    if (videoFile._knownDuration !== undefined && Number.isFinite(videoFile._knownDuration) && videoFile._knownDuration >= 0) {
+                        duration = videoFile._knownDuration;
+                        console.log(`Video ${i+1} using known duration: ${duration}`);
+                    } else {
+                        duration = await this.getVideoDuration(videoFile);
+                        console.log(`Video ${i+1} calculated duration: ${duration}`);
+                    }
                 } else {
                     console.warn("Invalid video item at index", i, videoFile);
-                    this.durations.push(0);
                 }
+                newDurations.push(duration);
+                videoTotalDurationNum += duration;
             }
         }
+        this.durations = newDurations;
 
         let audioDurationNum = 0;
         if (this.audioFile) {
@@ -318,11 +355,11 @@ export class VideoMerger extends VideoProcessor {
 
         console.log('Rendering timeline for videos:', this.videos.length, 'with durations:', this.durations, 'total duration:', this.totalDuration);
 
-        this.timelineBar.innerHTML = '';
+        this.timelineBar.innerHTML = ''; // Clear existing content
         let currentVideoOffset = 0;
-        let timelineBarActualHeight = 40; // Высота для видео трека
+        let timelineBarActualHeight = 40; // Default height for video track
 
-        // Рендерим видео треки
+        // Render video tracks
         if (this.videos && this.videos.length > 0) {
             this.videos.forEach((video, index) => {
                 const segment = document.createElement('div');
@@ -335,39 +372,33 @@ export class VideoMerger extends VideoProcessor {
                 let widthPercent = 0;
                 let leftPercent = 0;
                 
-                // Рассчитываем ширину сегмента
                 if (this.totalDuration > 0) {
                     widthPercent = (segmentDuration / this.totalDuration) * 100;
                     leftPercent = (currentVideoOffset / this.totalDuration) * 100;
-                } else {
-                    // Если общая длительность 0, распределяем равномерно
+                } else if (this.videos.length > 0) { 
                     widthPercent = 100 / this.videos.length;
                     leftPercent = (index * 100) / this.videos.length;
                 }
                 
-                // Минимальная ширина для видимости
-                if (widthPercent < 2) {
-                    widthPercent = 2;
+                if (widthPercent > 0 && widthPercent < 1) {
+                    widthPercent = 1;
                 }
                 
                 segment.style.width = `${Math.max(0, Math.min(100, widthPercent))}%`;
-                segment.style.left = `${Math.max(0, Math.min(100, leftPercent))}%`;
+                segment.style.left = `${Math.max(0, Math.min(100 - widthPercent, leftPercent))}%`;
                 segment.style.top = '0px';
-                segment.style.height = '40px';
+                segment.style.height = '40px'; 
                 
-                // Визуальный индикатор для видео с нулевой длительностью
-                if (segmentDuration === 0) {
-                    segment.style.background = 'repeating-linear-gradient(45deg, #e74c3c, #e74c3c 10px, #c0392b 10px, #c0392b 20px)';
-                    segment.style.opacity = '0.7';
-                } else {
-                    segment.style.background = '#3498db';
-                }
+                segment.style.background = segmentDuration === 0 ? 
+                    'repeating-linear-gradient(45deg, #e74c3c, #e74c3c 10px, #c0392b 10px, #c0392b 20px)' : 
+                    '#3498db';
+                if (segmentDuration === 0) segment.style.opacity = '0.7';
                 
                 const label = document.createElement('div');
                 label.className = 'video-info';
                 const startNum = Number.isFinite(currentVideoOffset) ? currentVideoOffset : 0;
                 const endNum = startNum + segmentDuration;
-                label.textContent = `Video ${index + 1} (${startNum.toFixed(2)}-${endNum.toFixed(2)}s)`;
+                label.textContent = `Video ${index + 1} (${this.formatTime(startNum)}-${this.formatTime(endNum)})`;
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'delete-btn';
@@ -385,20 +416,20 @@ export class VideoMerger extends VideoProcessor {
             });
         }
         
-        // Рендерим аудио трек отдельно снизу
+        // Render audio track separately below video tracks
         if (this.audioFile) {
             const audioTrackHeight = 25;
             const gap = 5; 
-            const audioTopPos = timelineBarActualHeight + gap;
+            const audioTopPos = (this.videos && this.videos.length > 0 ? timelineBarActualHeight : 0) + gap;
             
-            timelineBarActualHeight = audioTopPos + audioTrackHeight;
+            timelineBarActualHeight = audioTopPos + audioTrackHeight; // Update total height
             
             const audioSegment = document.createElement('div');
             audioSegment.className = 'timeline-segment audio-segment';
             
             const finiteAudioDuration = (Number.isFinite(this.audioDuration) && this.audioDuration >= 0) ? this.audioDuration : 0;
             
-            // Аудио всегда занимает всю ширину таймлайна, но показывает свою реальную длительность
+            // Audio track should always visually span the full width of the timeline bar
             audioSegment.style.width = '100%'; 
             audioSegment.style.left = '0%';
             audioSegment.style.top = `${audioTopPos}px`; 
@@ -412,9 +443,10 @@ export class VideoMerger extends VideoProcessor {
             audioLabel.style.fontSize = '12px';
             audioLabel.style.padding = '2px 8px';
             const audioName = this.audioFile.name || 'Audio File';
-            const displayDuration = finiteAudioDuration > 0 ? `${finiteAudioDuration.toFixed(1)}s` : '0s';
-            audioLabel.textContent = `♪ ${audioName.substring(0, 20)}${audioName.length > 20 ? '...' : ''} (${displayDuration})`;
-            
+            // Display the actual duration of the audio file in the label
+            audioLabel.textContent = `♪ ${audioName.substring(0, 20)}${audioName.length > 20 ? '...' : ''} (${this.formatTime(finiteAudioDuration)})`;
+
+
             const deleteAudioBtn = document.createElement('button');
             deleteAudioBtn.className = 'delete-btn audio-delete';
             deleteAudioBtn.textContent = '×';
@@ -423,7 +455,7 @@ export class VideoMerger extends VideoProcessor {
             deleteAudioBtn.style.background = '#e17055';
             deleteAudioBtn.onclick = (e) => {
                 e.stopPropagation();
-                this.removeAudio();
+                this.removeAudio(); // Assuming you have a removeAudio method
             };
             
             audioSegment.appendChild(audioLabel);
@@ -431,13 +463,14 @@ export class VideoMerger extends VideoProcessor {
             this.timelineBar.appendChild(audioSegment);
         }
         
-        // Устанавливаем высоту таймлайна
+        // Set the overall height of the timeline bar
         const minHeight = (this.videos && this.videos.length > 0) || this.audioFile ? 
-            (this.audioFile ? timelineBarActualHeight : 40) : 0;
+            (this.audioFile && (!this.videos || this.videos.length === 0) ? 30 : timelineBarActualHeight) : 0; // Min height if only audio
         this.timelineBar.style.height = `${Math.max(minHeight, timelineBarActualHeight)}px`;
         
-        // Добавляем курсор и прогресс
-        this.setupTimelineElements();
+        // Add cursor and progress elements (handled by setupTimelineElements)
+        this.setupTimelineElements(); 
+        this.updateTimeDisplay(); 
     }
 
     async loadVideo(index) {
@@ -784,8 +817,12 @@ export class VideoMerger extends VideoProcessor {
         const safeStartTime = (Number.isFinite(startTime) && startTime >= 0) ? startTime : 0;
         const safeEndTime = (Number.isFinite(endTime) && endTime >= safeStartTime) ? endTime : originalSegmentDuration;
 
-        if (safeStartTime < 0 || safeEndTime > originalSegmentDuration) {
-            this.logError(`Время для обрезки видео ${index + 1} некорректно. Start: ${safeStartTime.toFixed(2)}, End: ${safeEndTime.toFixed(2)}, Original Duration: ${originalSegmentDuration.toFixed(2)}`);
+        if (safeStartTime < 0 || safeEndTime > originalSegmentDuration || safeStartTime === safeEndTime) {
+            this.logError(`Время для обрезки видео ${index + 1} некорректно или нулевая длительность. Start: ${safeStartTime.toFixed(2)}, End: ${safeEndTime.toFixed(2)}, Original Duration: ${originalSegmentDuration.toFixed(2)}`);
+            if (safeStartTime === safeEndTime && safeStartTime !== 0) { // Allow 0 to 0 if original is 0
+                 // If trim results in zero duration, consider removing or handling as error
+                this.logError('Обрезка приведет к нулевой длительности.');
+            }
             return;
         }
 
@@ -793,23 +830,27 @@ export class VideoMerger extends VideoProcessor {
         console.log(`Trimming video ${index} from ${safeStartTime}s to ${safeEndTime}s, expected duration: ${expectedTrimmedDuration}s`);
 
         try {
-            this.debugElement.textContent = `Status: Video trimming in progress... (${(safeEndTime - safeStartTime).toFixed(1)}s segment)`;
+            this.debugElement.textContent = `Status: Video trimming in progress... (${(expectedTrimmedDuration).toFixed(1)}s segment)`;
             
             this.videoElement.pause();
             this.isPlaying = false;
             const playPauseBtn = document.getElementById('playPauseBtn');
             if (playPauseBtn) playPauseBtn.textContent = 'Play';
 
-            // Используем оптимизированную обрезку для лучшей производительности
             const trimmedVideoBlob = await this.trimVideoSegmentLowLatency(videoFileToTrim, safeStartTime, safeEndTime);
             console.log('Trimmed video blob size:', trimmedVideoBlob.size);
             
-            if (trimmedVideoBlob.size === 0) {
-                console.warn('Trimmed video has 0 size');
-                this.logError('Обрезанное видео имеет нулевой размер');
+            if (trimmedVideoBlob.size === 0 && expectedTrimmedDuration > 0) {
+                console.warn('Trimmed video has 0 size but expected duration > 0');
+                this.logError('Обрезанное видео имеет нулевой размер, хотя ожидалась ненулевая длительность.');
+                // Optionally, restore original duration or handle as error
+                // this.durations[index] = originalSegmentDuration; 
                 return;
             }
             
+            // Store the known duration on the blob itself
+            trimmedVideoBlob._knownDuration = expectedTrimmedDuration;
+
             this.videos[index] = trimmedVideoBlob;
             this.durations[index] = expectedTrimmedDuration;
             console.log(`Manually set duration for video ${index} to ${expectedTrimmedDuration}s`);
@@ -855,7 +896,10 @@ export class VideoMerger extends VideoProcessor {
     async trimVideoSegmentLowLatency(videoFile, start, end) {
         return new Promise((resolve, reject) => {
             if (start >= end) {
-                resolve(new Blob([], { type: 'video/mp4' })); 
+                // Resolve with an empty blob that has a known duration of 0
+                const emptyBlob = new Blob([], { type: 'video/mp4' });
+                emptyBlob._knownDuration = 0;
+                resolve(emptyBlob); 
                 return;
             }
 
@@ -872,18 +916,23 @@ export class VideoMerger extends VideoProcessor {
             }
             
             // ВАЖНО: НЕ отключаем звук для записи оригинального аудио
-            video.muted = false;
+            video.muted = false; // Crucial for audio capture
             video.preload = 'auto';
             video.crossOrigin = 'anonymous';
             
             let recorder; 
-            let canvas, ctx, audioContext; // Объявляем ctx здесь
+            let canvas, ctx, audioContext; 
             let isRecording = false;
+            let audioSourceNode = null;
             
             const cleanup = () => {
                 if (srcUrl) URL.revokeObjectURL(srcUrl); 
                 if (recorder && recorder.state !== 'inactive') {
                     recorder.stop();
+                }
+                if (audioSourceNode) {
+                    audioSourceNode.disconnect();
+                    audioSourceNode = null;
                 }
                 if (audioContext && audioContext.state !== 'closed') {
                     audioContext.close().catch(e => console.warn("Error closing audio context:", e));
@@ -911,20 +960,19 @@ export class VideoMerger extends VideoProcessor {
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     
                     // Создаем источник аудио из видео элемента
-                    const audioSource = audioContext.createMediaElementSource(video);
+                    const mediaElementSource = audioContext.createMediaElementSource(video);
+                    audioSourceNode = mediaElementSource;
                     const audioDestination = audioContext.createMediaStreamDestination();
                     
-                    // Подключаем аудио источник к месту назначения
-                    audioSource.connect(audioDestination);
-                    // Также подключаем к аудио выходу для мониторинга (опционально)
-                    audioSource.connect(audioContext.destination);
+                    mediaElementSource.connect(audioDestination);
+                    // Do NOT connect to audioContext.destination for silent trimming
                     
                     // Получаем видео поток с canvas
                     const videoStream = canvas.captureStream(30);
                     
                     // Комбинируем видео и аудио потоки
                     const combinedStream = new MediaStream([
-                        ...videoStream.getVideoTracks(),
+                        videoStream.getVideoTracks()[0],
                         ...audioDestination.stream.getAudioTracks()
                     ]);
                     
@@ -991,40 +1039,63 @@ export class VideoMerger extends VideoProcessor {
                 // Позиционируемся в начало обрезки
                 video.currentTime = start;
                 
-                video.onseeked = () => {
+                video.onseeked = async () => {
+                    // Try to "prime" the video element for audio capture
+                    try {
+                        if (video.paused) { // Only play/pause if actually paused
+                            await video.play();
+                            video.pause();
+                        }
+                    } catch (e) {
+                        console.warn("Error trying to prime video for audio capture:", e);
+                    }
+
                     if (!isRecording && recorder.state === 'inactive') {
                         isRecording = true;
-                        recorder.start(200); // Записываем порциями по 200ms
+                        recorder.start(100); // Start recording with a short timeslice
                         
-                        const targetDuration = (end - start) * 1000;
-                        const startTime = Date.now();
-                        const targetFPS = 30;
-                        
-                        const renderFrame = () => {
-                            const elapsed = Date.now() - startTime;
-                            
-                            if (elapsed >= targetDuration || video.ended || !isRecording) {
-                                if (isRecording && recorder.state === "recording") {
+                        const targetDurationMs = (end - start) * 1000;
+                        const frameIntervalMs = 1000 / 30; // Target ~30 FPS
+                        let accumulatedTimeMsInSegment = 0;
+                        let lastFrameTime = performance.now();
+
+                        const renderAndCaptureFrame = async () => {
+                            if (!isRecording || accumulatedTimeMsInSegment >= targetDurationMs) {
+                                if (recorder.state === "recording") {
                                     recorder.stop();
                                 }
                                 return;
                             }
+
+                            const now = performance.now();
+                            const deltaTime = now - lastFrameTime;
+                            lastFrameTime = now;
                             
-                            // Рисуем текущий кадр видео на canvas
-                            // ctx теперь доступен в этой области видимости
+                            // Ensure we don't seek beyond the 'end' or process too fast
+                            const currentVideoTimeToSeek = Math.min(start + (accumulatedTimeMsInSegment / 1000), end);
+                            
+                            if (Math.abs(video.currentTime - currentVideoTimeToSeek) > 0.05) { // Only seek if significantly different
+                                video.currentTime = currentVideoTimeToSeek;
+                                await new Promise(resolveSeek => {
+                                    const onSeekedFrame = () => {
+                                        video.removeEventListener('seeked', onSeekedFrame);
+                                        resolveSeek();
+                                    };
+                                    video.addEventListener('seeked', onSeekedFrame);
+                                });
+                            }
+                            
                             if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
                                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                             }
                             
-                            // Управляем позицией видео для точной обрезки
-                            const progress = elapsed / targetDuration;
-                            const nextTime = start + (end - start) * progress;
-                            video.currentTime = Math.min(nextTime, end - 0.1); // Небольшой отступ от конца
+                            accumulatedTimeMsInSegment += deltaTime; // Use actual elapsed time for stepping
                             
-                            setTimeout(renderFrame, 1000 / targetFPS);
+                            // Request next frame, aiming for frameIntervalMs but adapting
+                            setTimeout(renderAndCaptureFrame, Math.max(0, frameIntervalMs - (performance.now() - now)));
                         };
                         
-                        renderFrame();
+                        renderAndCaptureFrame();
                     }
                 };
             };
@@ -1076,502 +1147,175 @@ export class VideoMerger extends VideoProcessor {
             includeOriginalAudio = true, 
             includeOverlayAudio = true,
             quality = 'medium',
-            format = 'mp4'
+            format = 'webm' // Default to webm, mp4 can be chosen
         } = exportOptions;
         
-        this.debugElement.textContent = "Status: Creating export stream...";
-        
-        let canvas, ctx, audioContext, combinedAudioDestination;
-        let videoStreamTracks = [];
-        let audioStreamTracks = [];
-        let objectUrlsToRevoke = [];
+        this.debugElement.textContent = "Status: Export processing started...";
+        let audioContext; // Define audioContext here to ensure it's closable
 
         try {
-            // Настройка видео потока
-            if (this.videos && this.videos.length > 0) {
-                canvas = document.createElement('canvas');
-                ctx = canvas.getContext('2d', { willReadFrequently: true });
-                
-                // Получаем размеры из первого видео
-                const firstVideoFile = this.videos[0];
-                const firstVideoSrc = URL.createObjectURL(firstVideoFile);
-                objectUrlsToRevoke.push(firstVideoSrc);
-                
-                const tempVideo = document.createElement('video');
-                tempVideo.src = firstVideoSrc;
-                
-                await new Promise((resolve, reject) => {
-                    tempVideo.onloadedmetadata = () => {
-                        canvas.width = tempVideo.videoWidth || 1280;
-                        canvas.height = tempVideo.videoHeight || 720;
-                        resolve();
-                    };
-                    tempVideo.onerror = reject;
-                    setTimeout(reject, 5000);
-                });
-                
-                const canvasStream = canvas.captureStream(30);
-                videoStreamTracks = canvasStream.getVideoTracks();
+            if (!this.videos || this.videos.length === 0) {
+                throw new Error("No videos to export");
             }
 
-            // Улучшенная настройка аудио с поддержкой оригинального звука
-            if (includeOriginalAudio || (includeOverlayAudio && this.audioFile)) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                combinedAudioDestination = audioContext.createMediaStreamDestination();
-                
-                // Создаем главный микшер
-                const mainGain = audioContext.createGain();
-                mainGain.connect(combinedAudioDestination);
-                
-                // Добавляем оригинальное аудио из видео
-                if (includeOriginalAudio && this.videos.length > 0) {
-                    await this.setupOriginalVideoAudioForExport(mainGain, audioContext, objectUrlsToRevoke);
-                }
-                
-                // Добавляем наложенное аудио
-                if (includeOverlayAudio && this.audioFile) {
-                    await this.setupOverlayAudioForExport(mainGain, audioContext, objectUrlsToRevoke);
-                }
-                
-                audioStreamTracks = combinedAudioDestination.stream.getAudioTracks();
-            }
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            const firstVideoForMeta = document.createElement('video');
+            firstVideoForMeta.src = URL.createObjectURL(this.videos[0]);
+            await new Promise((resolve, reject) => {
+                firstVideoForMeta.onloadedmetadata = resolve;
+                firstVideoForMeta.onerror = (e) => reject(new Error(`Failed to load metadata for first video: ${e.message || e.type}`));
+            });
+            canvas.width = firstVideoForMeta.videoWidth;
+            canvas.height = firstVideoForMeta.videoHeight;
+            URL.revokeObjectURL(firstVideoForMeta.src);
 
-            const combinedStreamTracks = [...videoStreamTracks, ...audioStreamTracks];
-            if (combinedStreamTracks.length === 0) {
-                throw new Error("No tracks to record for export.");
+            const videoStreamFromCanvas = canvas.captureStream(30); 
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioDestinationNode = audioContext.createMediaStreamDestination();
+            const tracksForCombinedStream = [...videoStreamFromCanvas.getVideoTracks()];
+
+            let overlayAudioElement = null;
+            let overlayAudioSourceNode = null;
+            if (includeOverlayAudio && this.audioFile) {
+                overlayAudioElement = new Audio(URL.createObjectURL(this.audioFile));
+                await new Promise(r => overlayAudioElement.onloadedmetadata = r);
+                overlayAudioSourceNode = audioContext.createMediaElementSource(overlayAudioElement);
+                overlayAudioSourceNode.connect(audioDestinationNode);
+                const totalVideoDuration = this.durations.reduce((acc, cur) => acc + (Number.isFinite(cur) ? cur : 0), 0);
+                overlayAudioElement.loop = (overlayAudioElement.duration > 0 && totalVideoDuration > overlayAudioElement.duration);
+                this.debugElement.textContent = "Status: Overlay audio prepared.";
             }
             
-            const combinedStream = new MediaStream(combinedStreamTracks);
+            // Add audio tracks from the destination node to the combined stream
+            // This stream is dynamic and will reflect sources connected/disconnected from audioDestinationNode
+            tracksForCombinedStream.push(...audioDestinationNode.stream.getAudioTracks());
             
-            // Настройки качества и поддержка форматов
-            const formatConfigs = {
-                mp4: {
-                    low: { 
-                        mimeTypes: ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp8,opus'],
-                        video: 1000000, 
-                        audio: 96000 
-                    },
-                    medium: { 
-                        mimeTypes: ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp9,opus'],
-                        video: 2500000, 
-                        audio: 128000 
-                    },
-                    high: { 
-                        mimeTypes: ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp9,opus'],
-                        video: 5000000, 
-                        audio: 192000 
-                    }
-                },
-                webm: {
-                    low: { 
-                        mimeTypes: ['video/webm;codecs=vp8,opus'],
-                        video: 800000, 
-                        audio: 96000 
-                    },
-                    medium: { 
-                        mimeTypes: ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus'],
-                        video: 1500000, 
-                        audio: 128000 
-                    },
-                    high: { 
-                        mimeTypes: ['video/webm;codecs=vp9,opus'],
-                        video: 3000000, 
-                        audio: 192000 
-                    }
-                }
-            };
+            const mimeTypesToTry = format === 'mp4' ? 
+                ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=h264,aac', 'video/mp4'] : 
+                ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
             
-            const config = formatConfigs[format]?.[quality] || formatConfigs.webm.medium;
-            
-            // Выбираем поддерживаемый MIME тип
-            let selectedMimeType = '';
-            for (const mimeType of config.mimeTypes) {
-                if (MediaRecorder.isTypeSupported(mimeType)) {
-                    selectedMimeType = mimeType;
-                    break;
-                }
-            }
-            
+            let selectedMimeType = mimeTypesToTry.find(type => MediaRecorder.isTypeSupported(type));
             if (!selectedMimeType) {
-                throw new Error(`No supported codec found for ${format} format`);
+                console.warn("Preferred MIME type not supported, falling back to video/webm");
+                selectedMimeType = 'video/webm'; 
+                if (!MediaRecorder.isTypeSupported(selectedMimeType)) {
+                     throw new Error("No supported MIME type found for MediaRecorder (webm/mp4).");
+                }
             }
-            
             console.log(`Export using: ${selectedMimeType}`);
-            
-            const recorder = new MediaRecorder(combinedStream, {
+
+            const recorder = new MediaRecorder(new MediaStream(tracksForCombinedStream), {
                 mimeType: selectedMimeType,
-                videoBitsPerSecond: config.video,
-                audioBitsPerSecond: config.audio,
+                videoBitsPerSecond: quality === 'high' ? 5000000 : (quality === 'medium' ? 2500000 : 1000000),
+                audioBitsPerSecond: 128000 
             });
             
             const chunks = [];
-            recorder.ondataavailable = e => {
-                if (e.data.size > 0) chunks.push(e.data);
-            };
+            recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
             
-            return new Promise(async (resolve, reject) => {
+            recorder.start();
+            if (overlayAudioElement) await overlayAudioElement.play().catch(e => console.warn("Overlay audio play failed:", e));
+
+            for (let i = 0; i < this.videos.length; i++) {
+                const videoFile = this.videos[i];
+                const segmentDuration = this.durations[i];
+                this.debugElement.textContent = `Status: Processing segment ${i + 1}/${this.videos.length}...`;
+
+                const segmentPlayer = document.createElement('video');
+                const segmentSrcUrl = URL.createObjectURL(videoFile);
+                segmentPlayer.src = segmentSrcUrl;
+                
+                await new Promise((resolve, reject) => { 
+                    segmentPlayer.onloadedmetadata = resolve; 
+                    segmentPlayer.onerror = (e) => reject(new Error(`Failed to load metadata for segment ${i+1}: ${e.message || e.type}`));
+                });
+
+                let segmentAudioSourceNode = null;
+
+                if (includeOriginalAudio) {
+                    try {
+                        // Attempt to create and connect audio source for this segment
+                        segmentAudioSourceNode = audioContext.createMediaElementSource(segmentPlayer);
+                        segmentAudioSourceNode.connect(audioDestinationNode);
+                        segmentPlayer.muted = false; 
+                        console.log(`Audio source connected for segment ${i + 1}: ${videoFile.name || 'Blob'}`);
+                    } catch (e) {
+                        // This catch block will handle cases where MediaElementSourceNode cannot be created (e.g., truly no audio track)
+                        console.warn(`Could not create/connect audio source for segment ${i + 1} (${videoFile.name || 'Blob'}): ${e.message}. Video might have no audio or an issue with the audio track.`);
+                        segmentPlayer.muted = true; // Mute if source creation fails or if it's confirmed no audio
+                    }
+                } else {
+                    segmentPlayer.muted = true; 
+                }
+                
+                await segmentPlayer.play().catch(e => console.warn(`Segment ${i+1} play error: ${e.name} - ${e.message}`));
+                
+                let RENDER_FRAMES_FOR_SEGMENT_DURATION = 0;
+                const frameDuration = 1000 / 30; 
+
+                while(RENDER_FRAMES_FOR_SEGMENT_DURATION < segmentDuration * 1000 && !segmentPlayer.ended) {
+                    if (segmentPlayer.videoWidth > 0 && segmentPlayer.videoHeight > 0) {
+                         ctx.drawImage(segmentPlayer, 0, 0, canvas.width, canvas.height);
+                    }
+                    if (this.processors?.filter?.applyFilterToCanvas) {
+                        this.processors.filter.applyFilterToCanvas(ctx, canvas);
+                    }
+                    if (this.processors?.text?.drawTextOnCanvas) { // Assuming text processor has this method
+                       this.processors.text.drawTextOnCanvas(ctx, canvas);
+                    }
+                    await new Promise(r => setTimeout(r, frameDuration));
+                    RENDER_FRAMES_FOR_SEGMENT_DURATION += frameDuration;
+                }
+                
+                segmentPlayer.pause();
+                if (segmentAudioSourceNode) {
+                    segmentAudioSourceNode.disconnect(); 
+                }
+                URL.revokeObjectURL(segmentSrcUrl);
+            }
+
+            if (overlayAudioElement) {
+                overlayAudioElement.pause();
+                if (overlayAudioElement.src && overlayAudioElement.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(overlayAudioElement.src);
+                }
+            }
+            if (overlayAudioSourceNode) {
+                overlayAudioSourceNode.disconnect();
+            }
+            
+            recorder.stop();
+            
+            return new Promise((resolve, reject) => {
                 recorder.onstop = () => {
-                    objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
-                    if (audioContext) audioContext.close().catch(e => console.warn("Error closing audio context:", e));
-                    
-                    if (chunks.length > 0) {
-                        // Определяем расширение файла
-                        const fileType = selectedMimeType.includes('mp4') ? 'video/mp4' : 'video/webm';
-                        const blob = new Blob(chunks, { type: fileType });
-                        this.debugElement.textContent = `Status: Export finished (${format.toUpperCase()}).`;
-                        resolve(blob);
-                    } else {
-                        reject(new Error("Export resulted in an empty file."));
+                    audioContext.close().catch(e => console.warn("Error closing audio context:", e));
+                    if (chunks.length === 0) {
+                        this.debugElement.textContent = "Status: Export failed (no data recorded).";
+                        reject(new Error('Generated video is empty. Check console for errors.'));
+                        return;
                     }
+                    const blob = new Blob(chunks, { type: selectedMimeType.split(';')[0] });
+                    this.debugElement.textContent = "Status: Export finished successfully.";
+                    resolve(blob);
                 };
-                
-                recorder.onerror = (e) => {
-                    objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
-                    if (audioContext) audioContext.close();
-                    reject(e.error || new Error("MediaRecorder error"));
+                recorder.onerror = (event) => {
+                    audioContext.close().catch(e => console.warn("Error closing audio context on recorder error:", e));
+                    this.debugElement.textContent = `Status: Export failed (${event.error?.name || 'Unknown error'}).`;
+                    reject(event.error || new Error("MediaRecorder failed"));
                 };
-
-                recorder.start(100);
-                
-                // Рендерим видео с синхронизированным аудио
-                await this.renderVideoWithSynchronizedAudio(ctx, canvas, recorder, objectUrlsToRevoke);
-                
-                setTimeout(() => {
-                    if (recorder.state === 'recording') {
-                        recorder.stop();
-                    }
-                }, 500);
             });
-        } catch (error) {
-            objectUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
-            if (audioContext) audioContext.close().catch(e => console.warn("Error closing audio context:", e));
-            throw error;
-        }
-    }
-
-    // Новый метод для настройки оригинального аудио из видео
-    async setupOriginalVideoAudioForExport(destination, audioContext, objectUrlsToRevoke) {
-        this.exportVideoAudioElements = [];
-        
-        for (let i = 0; i < this.videos.length; i++) {
-            const videoFile = this.videos[i];
-            const videoSrc = URL.createObjectURL(videoFile);
-            objectUrlsToRevoke.push(videoSrc);
-            
-            // Создаем видео элемент для извлечения аудио
-            const videoElement = document.createElement('video');
-            videoElement.src = videoSrc;
-            videoElement.muted = false; // ВАЖНО: не отключаем звук
-            videoElement.preload = 'auto';
-            videoElement.crossOrigin = 'anonymous';
-            
-            try {
-                await new Promise((resolve, reject) => {
-                    videoElement.onloadedmetadata = resolve;
-                    videoElement.onerror = () => reject(new Error(`Failed to load video ${i+1} for audio`));
-                    setTimeout(reject, 5000);
-                });
-                
-                // Проверяем наличие аудио дорожки
-                if (videoElement.mozHasAudio !== false && videoElement.webkitAudioDecodedByteCount !== 0) {
-                    // Создаем аудио источник из видео
-                    const audioSource = audioContext.createMediaElementSource(videoElement);
-                    
-                    // Создаем gain узел для управления громкостью
-                    const gainNode = audioContext.createGain();
-                    gainNode.gain.value = 0; // Начинаем с тишины
-                    
-                    // Подключаем: источник -> gain -> назначение
-                    audioSource.connect(gainNode);
-                    gainNode.connect(destination);
-                    
-                    this.exportVideoAudioElements.push({
-                        element: videoElement,
-                        gainNode: gainNode,
-                        duration: this.durations[i] || 0,
-                        index: i
-                    });
-                    
-                    console.log(`Audio setup for video ${i+1} completed`);
-                } else {
-                    console.warn(`Video ${i+1} appears to have no audio track`);
-                }
-                
-            } catch (error) {
-                console.warn(`Failed to setup audio from video ${i+1}:`, error);
-            }
-        }
-        
-        return this.exportVideoAudioElements;
-    }
-
-    // Метод для настройки наложенного аудио
-    async setupOverlayAudioForExport(destination, audioContext, objectUrlsToRevoke) {
-        if (!this.audioFile) return;
-        
-        try {
-            const audioSrc = URL.createObjectURL(this.audioFile);
-            objectUrlsToRevoke.push(audioSrc);
-            
-            const overlayAudioElement = document.createElement('audio');
-            overlayAudioElement.src = audioSrc;
-            overlayAudioElement.loop = true;
-            overlayAudioElement.preload = 'auto';
-            overlayAudioElement.crossOrigin = 'anonymous';
-            
-            await new Promise((resolve, reject) => {
-                overlayAudioElement.onloadedmetadata = resolve;
-                overlayAudioElement.onerror = () => reject(new Error("Failed to load overlay audio"));
-                setTimeout(reject, 3000);
-            });
-            
-            const overlaySource = audioContext.createMediaElementSource(overlayAudioElement);
-            const overlayGain = audioContext.createGain();
-            overlayGain.gain.value = 0.5; // Немного тише основного звука
-            
-            overlaySource.connect(overlayGain);
-            overlayGain.connect(destination);
-            
-            this.exportOverlayAudio = {
-                element: overlayAudioElement,
-                gainNode: overlayGain
-            };
-            
-            console.log("Overlay audio setup completed");
             
         } catch (error) {
-            console.warn("Failed to setup overlay audio:", error);
-        }
-    }
-
-    // Улучшенный рендеринг с синхронизированным аудио
-    async renderVideoWithSynchronizedAudio(ctx, canvas, recorder, objectUrlsToRevoke) {
-        this.debugElement.textContent = "Status: Rendering video with synchronized audio...";
-        
-        // Запускаем наложенное аудио в фоне если есть
-        if (this.exportOverlayAudio) {
-            this.exportOverlayAudio.element.currentTime = 0;
-            this.exportOverlayAudio.element.play().catch(e => 
-                console.warn("Failed to start overlay audio:", e));
-        }
-        
-        for (let i = 0; i < this.videos.length; i++) {
-            if (recorder.state !== 'recording') break;
-            
-            const videoFile = this.videos[i];
-            const segmentDuration = this.durations[i] || 0;
-            
-            if (segmentDuration <= 0) continue;
-            
-            try {
-                // Создаем видео элемент для рендеринга
-                const segmentSrc = URL.createObjectURL(videoFile);
-                objectUrlsToRevoke.push(segmentSrc);
-                
-                const segmentVideo = document.createElement('video');
-                segmentVideo.src = segmentSrc;
-                segmentVideo.muted = true; // Отключаем прямой звук для рендеринга
-                segmentVideo.preload = 'auto';
-                
-                await new Promise((resolve, reject) => {
-                    segmentVideo.onloadedmetadata = resolve;
-                    segmentVideo.onerror = () => reject(new Error(`Failed to load segment ${i+1}`));
-                    setTimeout(reject, 5000);
-                });
-                
-                // Включаем аудио для текущего сегмента
-                const currentAudioElement = this.exportVideoAudioElements?.find(ae => ae.index === i);
-                if (currentAudioElement) {
-                    currentAudioElement.gainNode.gain.value = 1.0; // Включаем звук
-                    currentAudioElement.element.currentTime = 0;
-                    currentAudioElement.element.play().catch(e => 
-                        console.warn(`Failed to play audio for segment ${i+1}:`, e));
-                }
-                
-                // Запускаем видео
-                segmentVideo.currentTime = 0;
-                await segmentVideo.play();
-                
-                const startTime = Date.now();
-                const targetDuration = segmentDuration * 1000;
-                
-                // Рендерим кадры
-                while (Date.now() - startTime < targetDuration && !segmentVideo.ended && recorder.state === 'recording') {
-                    // Рисуем видео кадр
-                    if (segmentVideo.videoWidth > 0 && segmentVideo.videoHeight > 0) {
-                        ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
-                        
-                        // Применяем фильтры
-                        this.applyFiltersToCanvas(ctx, canvas);
-                        
-                        // Добавляем текст
-                        this.renderTextOnCanvas(ctx, canvas);
-                    }
-                    
-                    // Ждем следующий кадр
-                    await new Promise(resolve => setTimeout(resolve, 33)); // ~30 FPS
-                }
-                
-                segmentVideo.pause();
-                
-                // Выключаем аудио для завершенного сегмента
-                if (currentAudioElement) {
-                    currentAudioElement.gainNode.gain.value = 0;
-                    currentAudioElement.element.pause();
-                }
-                
-            } catch (error) {
-                console.error(`Error processing segment ${i+1}:`, error);
+            console.error('Export processing error:', error);
+            this.debugElement.textContent = `Status: Export error - ${error.message}`;
+            if (audioContext && audioContext.state !== 'closed') { 
+                audioContext.close().catch(e => console.warn("Error closing audio context on main catch:", e));
             }
+            throw error; // Re-throw to be caught by calling function if necessary
         }
-        
-        // Останавливаем наложенное аудио
-        if (this.exportOverlayAudio) {
-            this.exportOverlayAudio.element.pause();
-        }
-    }
-
-    applyFiltersToCanvas(ctx, canvas) {
-        const filterProcessor = this.processors?.filter;
-        if (!filterProcessor || !filterProcessor.currentFilter) return;
-        
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        switch (filterProcessor.currentFilter) {
-            case 'grayscale':
-                for (let i = 0; i < data.length; i += 4) {
-                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                    data[i] = gray;
-                    data[i + 1] = gray;
-                    data[i + 2] = gray;
-                }
-                break;
-            case 'sepia':
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i], g = data[i + 1], b = data[i + 2];
-                    data[i] = Math.min(255, r * 0.393 + g * 0.769 + b * 0.189);
-                    data[i + 1] = Math.min(255, r * 0.349 + g * 0.686 + b * 0.168);
-                    data[i + 2] = Math.min(255, r * 0.272 + g * 0.534 + b * 0.131);
-                }
-                break;
-            case 'invert':
-                for (let i = 0; i < data.length; i += 4) {
-                    data[i] = 255 - data[i];
-                    data[i + 1] = 255 - data[i + 1];
-                    data[i + 2] = 255 - data[i + 2];
-                }
-                break;
-        }
-        
-        ctx.putImageData(imageData, 0, 0);
-    }
-
-    renderTextOnCanvas(ctx, canvas) {
-        const textProcessor = this.processors?.text;
-        if (!textProcessor || !textProcessor.textElement) return;
-        
-        // Проверяем есть ли текст в div элементах или в textContent
-        const textDivs = textProcessor.textElement.querySelectorAll('div');
-        let lines = [];
-        
-        if (textDivs.length > 0) {
-            lines = Array.from(textDivs).map(div => div.textContent).filter(line => line.trim());
-        } else if (textProcessor.textElement.textContent) {
-            lines = [textProcessor.textElement.textContent];
-        }
-        
-        if (lines.length === 0) return;
-        
-        const fontSize = parseInt(textProcessor.textElement.style.fontSize) || 24;
-        const color = textProcessor.textElement.style.color || '#ffffff';
-        const position = textProcessor.textElement.dataset.position || 'top-left';
-        
-        // Адаптивный размер шрифта для canvas
-        const scaledFontSize = Math.max(12, Math.min(fontSize, canvas.width / 20));
-        
-        ctx.font = `bold ${scaledFontSize}px Arial, sans-serif`;
-        ctx.fillStyle = color;
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = Math.max(1, scaledFontSize / 15);
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        
-        const lineHeight = scaledFontSize * 1.3;
-        const margin = Math.max(10, canvas.width * 0.03);
-        const maxWidth = canvas.width - (margin * 2);
-        
-        // Разбиваем длинные строки чтобы поместились в canvas
-        const wrappedLines = [];
-        lines.forEach(line => {
-            const words = line.split(' ');
-            let currentLine = '';
-            
-            words.forEach(word => {
-                const testLine = currentLine ? `${currentLine} ${word}` : word;
-                const metrics = ctx.measureText(testLine);
-                
-                if (metrics.width <= maxWidth) {
-                    currentLine = testLine;
-                } else {
-                    if (currentLine) {
-                        wrappedLines.push(currentLine);
-                        currentLine = word;
-                    } else {
-                        // Если одно слово слишком длинное, обрезаем его
-                        wrappedLines.push(word.substring(0, Math.floor(maxWidth / (scaledFontSize * 0.6))));
-                    }
-                }
-            });
-            
-            if (currentLine) {
-                wrappedLines.push(currentLine);
-            }
-        });
-        
-        // Ограничиваем количество строк чтобы поместились в видео
-        const maxLines = Math.floor((canvas.height - margin * 2) / lineHeight);
-        const finalLines = wrappedLines.slice(0, maxLines);
-        
-        const totalHeight = finalLines.length * lineHeight;
-        
-        // Определяем начальную позицию
-        let startX, startY;
-        
-        switch (position) {
-            case 'top-left':
-                startX = margin;
-                startY = margin;
-                break;
-            case 'top-right':
-                startX = canvas.width - margin;
-                startY = margin;
-                ctx.textAlign = 'right';
-                break;
-            case 'bottom-left':
-                startX = margin;
-                startY = Math.max(margin, canvas.height - totalHeight - margin);
-                break;
-            case 'bottom-right':
-                startX = canvas.width - margin;
-                startY = Math.max(margin, canvas.height - totalHeight - margin);
-                ctx.textAlign = 'right';
-                break;
-            default:
-                startX = margin;
-                startY = margin;
-        }
-        
-        // Рисуем каждую строку с обводкой
-        finalLines.forEach((line, index) => {
-            const y = startY + (index * lineHeight);
-            
-            // Проверяем что текст не выходит за границы
-            if (y + scaledFontSize <= canvas.height - margin) {
-                ctx.strokeText(line, startX, y);
-                ctx.fillText(line, startX, y);
-            }
-        });
     }
 
     async removeVideo(index) { 
@@ -1617,36 +1361,25 @@ export class VideoMerger extends VideoProcessor {
             await this.processors.audio.clearAudio();
         }
         this.audioFile = null;
+        this.audioDuration = 0;
         
-        await this.loadMediaDurations(); // Recalculate totalDuration
-        this.updateTimelineSegments(); // Render timeline
+        // Recalculate total duration based only on videos
+        let videoTotalDurationNum = 0;
+        if (this.videos && this.videos.length > 0) {
+            for (let i = 0; i < this.durations.length; i++) {
+                videoTotalDurationNum += (Number.isFinite(this.durations[i]) ? this.durations[i] : 0);
+            }
+        }
+        this.totalDuration = videoTotalDurationNum;
+        if (this.videos.length > 0 && this.totalDuration === 0) {
+            this.totalDuration = 0.1; 
+        }
+        if (!Number.isFinite(this.totalDuration) || this.totalDuration < 0) {
+            this.totalDuration = 0; 
+        }
+
+        this.updateTimelineSegments();
         this.updateTimeDisplay();
-        this.debugElement.textContent = 'Статус: Audio removed';
-    }
-
-    // Centralized method to update time display for both current and total duration
-    updateTimeDisplay() {
-        const currentTime = this.getCurrentTime();
-        const validCurrentTime = Number.isFinite(currentTime) ? currentTime : 0;
-        const validTotalDuration = Number.isFinite(this.totalDuration) ? this.totalDuration : 0;
-
-        const percentage = (validTotalDuration > 0) ? (validCurrentTime / validTotalDuration) * 100 : 0;
-        const safePercentage = Math.max(0, Math.min(100, Number.isFinite(percentage) ? percentage : 0));
-
-        if (this.cursor) {
-            this.cursor.style.left = `${safePercentage}%`;
-        }
-        if (this.progress) {
-            this.progress.style.width = `${safePercentage}%`;
-        }
-
-        const currentTimeDisplay = document.getElementById('currentTime');
-        if (currentTimeDisplay) {
-            currentTimeDisplay.textContent = this.formatTime(validCurrentTime);
-        }
-        const totalDurationDisplay = document.getElementById('duration');
-        if (totalDurationDisplay) {
-            totalDurationDisplay.textContent = this.formatTime(validTotalDuration);
-        }
+        this.debugElement.textContent = 'Status: Audio removed';
     }
 }
