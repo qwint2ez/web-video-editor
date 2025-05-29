@@ -48,6 +48,6 @@ describe('VideoTrimmer', () => {
     expect(trimmer.endTime).toBe(10);
     expect(dependencies.timelineRange.max).toBe('8');
     expect(dependencies.duration.textContent).toBe('0:08');
-    expect(dependencies.debugElement.textContent).toBe('Status: Video trimmed from 2 to 10 sec');
+    expect(dependencies.debugElement.textContent).toBe('Status: Global trim completed 2.00s - 10.00s');
   });
 });

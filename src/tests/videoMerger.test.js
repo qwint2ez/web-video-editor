@@ -61,6 +61,6 @@ describe('VideoMerger', () => {
     expect(merger.videos).toHaveLength(2);
     expect(merger.totalDuration).toBe(20);
     expect(dependencies.videoElement.src).toBe('mocked-video-url');
-    expect(dependencies.debugElement.textContent).toBe('Status: Videos merged');
+    expect(dependencies.debugElement.textContent).toBe('Статус: Media loaded successfully');
   });
 });
