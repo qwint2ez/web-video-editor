@@ -1,4 +1,4 @@
-import { VideoEditor } from '../core/videoEditor.js';
+import { VideoEditor } from '../../utils-library/src/videoEditor.js'; //  Changed: Используем прямой относительный путь
 
 // State management 
 const state = {

@@ -1,4 +1,4 @@
-import { VideoMerger } from '../core/videoMerger.js';
+import { VideoMerger } from '../../utils-library/src/videoMerger.js';
 
 describe('VideoMerger', () => {
   let dependencies;

@@ -9,6 +9,9 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "dependencies": {
+    "utils-library": "file:../utils-library"
+  },
   "devDependencies": {
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",

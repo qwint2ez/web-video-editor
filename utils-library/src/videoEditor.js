@@ -5,8 +5,8 @@ import { TextOverlay } from './textOverlay.js';
 import { VideoMerger } from './videoMerger.js';
 import { VideoTrimmer } from './videoTrimmer.js';
 import { VideoExporter } from './videoExporter.js';
-import { TimelineUIManager } from './timelineUIManager.js';
-import { ProjectSerializer } from './projectSerializer.js'; // Added
+import { TimelineUIManager } from '../../src/core/timelineUIManager.js';
+import { ProjectSerializer } from './projectSerializer.js'; // Changed: Используем относительный путь
 // MediaInfo is used internally by VideoMerger now
 
 export class VideoEditor {
@@ -75,7 +75,7 @@ export class VideoEditor {
             parent.appendChild(overlay);
         } else {
             console.warn('Video element parent not found for text overlay, text overlay might not be visible.');
-            // Можно добавить его в body как крайний случай, но лучше чтобы он был в контейнере видео
+            // Можно добавить его в body как крайний случае, но лучше чтобы он был в контейнере видео
             document.body.appendChild(overlay); 
         }
         return overlay;
