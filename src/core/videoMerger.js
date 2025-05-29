@@ -580,6 +580,7 @@ export class VideoMerger extends VideoProcessor {
             }
 
             const video = document.createElement('video');
+            video.muted = true;
             let srcUrl = '';
             try {
                 srcUrl = URL.createObjectURL(videoFile);
@@ -590,7 +591,6 @@ export class VideoMerger extends VideoProcessor {
                 reject(error);
                 return;
             }
-            video.muted = true;
             let recorder; 
             let canvas;
             let isRecording = false;
@@ -851,11 +851,11 @@ export class VideoMerger extends VideoProcessor {
         }
     }
 
-    // Оптимизированная версия обрезки с низкой задержкой
+    // Исправленная версия обрезки с сохранением аудио
     async trimVideoSegmentLowLatency(videoFile, start, end) {
         return new Promise((resolve, reject) => {
             if (start >= end) {
-                resolve(new Blob([], { type: 'video/webm' })); 
+                resolve(new Blob([], { type: 'video/mp4' })); 
                 return;
             }
 
@@ -871,68 +871,97 @@ export class VideoMerger extends VideoProcessor {
                 return;
             }
             
-            video.muted = false; // ВАЖНО: НЕ отключаем звук для записи
+            // ВАЖНО: НЕ отключаем звук для записи оригинального аудио
+            video.muted = false;
             video.preload = 'auto';
+            video.crossOrigin = 'anonymous';
+            
             let recorder; 
-            let canvas;
+            let canvas, ctx, audioContext; // Объявляем ctx здесь
             let isRecording = false;
-            let audioContext, sourceNode, destination;
             
             const cleanup = () => {
                 if (srcUrl) URL.revokeObjectURL(srcUrl); 
                 if (recorder && recorder.state !== 'inactive') {
                     recorder.stop();
                 }
-                if (audioContext) {
+                if (audioContext && audioContext.state !== 'closed') {
                     audioContext.close().catch(e => console.warn("Error closing audio context:", e));
                 }
                 video.remove(); 
             };
 
-            video.onloadedmetadata = () => {
+            video.onloadedmetadata = async () => {
                 if (video.videoWidth === 0 || video.videoHeight === 0) {
                     cleanup();
                     reject(new Error("Invalid video dimensions"));
                     return;
                 }
                 
-                canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                
-                // Уменьшаем разрешение для лучшей производительности
-                const scaleFactor = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
-                canvas.width = Math.floor(video.videoWidth * scaleFactor);
-                canvas.height = Math.floor(video.videoHeight * scaleFactor);
-                
-                // Создаем аудио контекст для микширования
                 try {
-                    audioContext = new AudioContext();
-                    sourceNode = audioContext.createMediaElementSource(video);
-                    destination = audioContext.createMediaStreamDestination();
-                    sourceNode.connect(destination);
+                    // Создаем canvas для видео
+                    canvas = document.createElement('canvas');
+                    ctx = canvas.getContext('2d', { willReadFrequently: true }); // Инициализируем ctx
                     
-                    // Соединяем видео и аудио потоки
-                    const videoStream = canvas.captureStream(20);
-                    const audioStream = destination.stream;
+                    // Сохраняем оригинальное разрешение для лучшего качества
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
                     
+                    // Создаем аудио контекст для захвата звука
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    // Создаем источник аудио из видео элемента
+                    const audioSource = audioContext.createMediaElementSource(video);
+                    const audioDestination = audioContext.createMediaStreamDestination();
+                    
+                    // Подключаем аудио источник к месту назначения
+                    audioSource.connect(audioDestination);
+                    // Также подключаем к аудио выходу для мониторинга (опционально)
+                    audioSource.connect(audioContext.destination);
+                    
+                    // Получаем видео поток с canvas
+                    const videoStream = canvas.captureStream(30);
+                    
+                    // Комбинируем видео и аудио потоки
                     const combinedStream = new MediaStream([
                         ...videoStream.getVideoTracks(),
-                        ...audioStream.getAudioTracks()
+                        ...audioDestination.stream.getAudioTracks()
                     ]);
                     
+                    // Настраиваем recorder с поддержкой MP4 и WebM
+                    const mimeTypes = [
+                        'video/mp4;codecs=h264,aac',  // Приоритет MP4
+                        'video/webm;codecs=vp9,opus',
+                        'video/webm;codecs=vp8,opus',
+                        'video/webm'
+                    ];
+                    
+                    let selectedMimeType = '';
+                    for (const mimeType of mimeTypes) {
+                        if (MediaRecorder.isTypeSupported(mimeType)) {
+                            selectedMimeType = mimeType;
+                            break;
+                        }
+                    }
+                    
+                    if (!selectedMimeType) {
+                        cleanup();
+                        reject(new Error("No supported video format found"));
+                        return;
+                    }
+                    
+                    console.log(`Using MIME type: ${selectedMimeType}`);
+                    
                     recorder = new MediaRecorder(combinedStream, {
-                        mimeType: 'video/webm;codecs=vp9,opus', // Используем VP9 и Opus для лучшего качества
-                        videoBitsPerSecond: 500000,
-                        audioBitsPerSecond: 128000
+                        mimeType: selectedMimeType,
+                        videoBitsPerSecond: 2000000, // 2 Mbps для хорошего качества
+                        audioBitsPerSecond: 128000   // 128 kbps для аудио
                     });
+
                 } catch (e) {
-                    // Fallback без аудио контекста
-                    console.warn("Failed to create audio context, falling back to video-only:", e);
-                    const stream = canvas.captureStream(20);
-                    recorder = new MediaRecorder(stream, {
-                        mimeType: 'video/webm;codecs=vp8', 
-                        videoBitsPerSecond: 300000
-                    });
+                    cleanup();
+                    reject(new Error(`MediaRecorder setup failed: ${e.message}`));
+                    return;
                 }
 
                 const chunks = [];
@@ -944,7 +973,10 @@ export class VideoMerger extends VideoProcessor {
                     cleanup();
                     isRecording = false;
                     if (chunks.length > 0) {
-                        resolve(new Blob(chunks, { type: 'video/webm' }));
+                        // Определяем тип файла на основе MIME типа
+                        const mimeType = recorder.mimeType;
+                        const fileType = mimeType.includes('mp4') ? 'video/mp4' : 'video/webm';
+                        resolve(new Blob(chunks, { type: fileType }));
                     } else {
                         reject(new Error("No data recorded"));
                     }
@@ -956,16 +988,17 @@ export class VideoMerger extends VideoProcessor {
                     reject(event.error || new Error("Recording failed"));
                 };
 
+                // Позиционируемся в начало обрезки
                 video.currentTime = start;
                 
                 video.onseeked = () => {
                     if (!isRecording && recorder.state === 'inactive') {
                         isRecording = true;
-                        recorder.start(200);
+                        recorder.start(200); // Записываем порциями по 200ms
                         
                         const targetDuration = (end - start) * 1000;
                         const startTime = Date.now();
-                        const targetFPS = 15; // Компромисс между качеством и производительностью
+                        const targetFPS = 30;
                         
                         const renderFrame = () => {
                             const elapsed = Date.now() - startTime;
@@ -977,13 +1010,16 @@ export class VideoMerger extends VideoProcessor {
                                 return;
                             }
                             
-                            // Рисуем кадр с масштабированием
-                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            // Рисуем текущий кадр видео на canvas
+                            // ctx теперь доступен в этой области видимости
+                            if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            }
                             
-                            // Управляем позицией видео
+                            // Управляем позицией видео для точной обрезки
                             const progress = elapsed / targetDuration;
                             const nextTime = start + (end - start) * progress;
-                            video.currentTime = Math.min(nextTime, end);
+                            video.currentTime = Math.min(nextTime, end - 0.1); // Небольшой отступ от конца
                             
                             setTimeout(renderFrame, 1000 / targetFPS);
                         };
@@ -1040,12 +1076,12 @@ export class VideoMerger extends VideoProcessor {
             includeOriginalAudio = true, 
             includeOverlayAudio = true,
             quality = 'medium',
-            format = 'webm'
+            format = 'mp4'
         } = exportOptions;
         
         this.debugElement.textContent = "Status: Creating export stream...";
         
-        let canvas, ctx, audioContext, mixedAudioDestination;
+        let canvas, ctx, audioContext, combinedAudioDestination;
         let videoStreamTracks = [];
         let audioStreamTracks = [];
         let objectUrlsToRevoke = [];
@@ -1066,8 +1102,8 @@ export class VideoMerger extends VideoProcessor {
                 
                 await new Promise((resolve, reject) => {
                     tempVideo.onloadedmetadata = () => {
-                        canvas.width = tempVideo.videoWidth || 640;
-                        canvas.height = tempVideo.videoHeight || 480;
+                        canvas.width = tempVideo.videoWidth || 1280;
+                        canvas.height = tempVideo.videoHeight || 720;
                         resolve();
                     };
                     tempVideo.onerror = reject;
@@ -1078,18 +1114,18 @@ export class VideoMerger extends VideoProcessor {
                 videoStreamTracks = canvasStream.getVideoTracks();
             }
 
-            // Улучшенная настройка аудио микшера
+            // Улучшенная настройка аудио с поддержкой оригинального звука
             if (includeOriginalAudio || (includeOverlayAudio && this.audioFile)) {
-                audioContext = new AudioContext();
-                mixedAudioDestination = audioContext.createMediaStreamDestination();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                combinedAudioDestination = audioContext.createMediaStreamDestination();
                 
-                // Создаем главный gain узел для микширования
+                // Создаем главный микшер
                 const mainGain = audioContext.createGain();
-                mainGain.connect(mixedAudioDestination);
+                mainGain.connect(combinedAudioDestination);
                 
-                // Добавляем оригинальное аудио из видео сегментов
+                // Добавляем оригинальное аудио из видео
                 if (includeOriginalAudio && this.videos.length > 0) {
-                    await this.setupSequentialAudioForExport(mainGain, audioContext, objectUrlsToRevoke);
+                    await this.setupOriginalVideoAudioForExport(mainGain, audioContext, objectUrlsToRevoke);
                 }
                 
                 // Добавляем наложенное аудио
@@ -1097,7 +1133,7 @@ export class VideoMerger extends VideoProcessor {
                     await this.setupOverlayAudioForExport(mainGain, audioContext, objectUrlsToRevoke);
                 }
                 
-                audioStreamTracks = mixedAudioDestination.stream.getAudioTracks();
+                audioStreamTracks = combinedAudioDestination.stream.getAudioTracks();
             }
 
             const combinedStreamTracks = [...videoStreamTracks, ...audioStreamTracks];
@@ -1107,44 +1143,66 @@ export class VideoMerger extends VideoProcessor {
             
             const combinedStream = new MediaStream(combinedStreamTracks);
             
-            // Улучшенные настройки качества
-            const qualitySettings = {
-                low: { 
-                    video: 800000, 
-                    audio: 96000,
-                    mimeType: 'video/webm;codecs=vp8,opus'
+            // Настройки качества и поддержка форматов
+            const formatConfigs = {
+                mp4: {
+                    low: { 
+                        mimeTypes: ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp8,opus'],
+                        video: 1000000, 
+                        audio: 96000 
+                    },
+                    medium: { 
+                        mimeTypes: ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp9,opus'],
+                        video: 2500000, 
+                        audio: 128000 
+                    },
+                    high: { 
+                        mimeTypes: ['video/mp4;codecs=h264,aac', 'video/webm;codecs=vp9,opus'],
+                        video: 5000000, 
+                        audio: 192000 
+                    }
                 },
-                medium: { 
-                    video: 1500000, 
-                    audio: 128000,
-                    mimeType: 'video/webm;codecs=vp9,opus'
-                },
-                high: { 
-                    video: 3000000, 
-                    audio: 192000,
-                    mimeType: 'video/webm;codecs=vp9,opus'
+                webm: {
+                    low: { 
+                        mimeTypes: ['video/webm;codecs=vp8,opus'],
+                        video: 800000, 
+                        audio: 96000 
+                    },
+                    medium: { 
+                        mimeTypes: ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus'],
+                        video: 1500000, 
+                        audio: 128000 
+                    },
+                    high: { 
+                        mimeTypes: ['video/webm;codecs=vp9,opus'],
+                        video: 3000000, 
+                        audio: 192000 
+                    }
                 }
             };
             
-            const settings = qualitySettings[quality] || qualitySettings.medium;
+            const config = formatConfigs[format]?.[quality] || formatConfigs.webm.medium;
             
-            let recorder;
-            try {
-                // Пробуем использовать оптимальный кодек
-                recorder = new MediaRecorder(combinedStream, {
-                    mimeType: settings.mimeType,
-                    videoBitsPerSecond: settings.video,
-                    audioBitsPerSecond: settings.audio,
-                });
-            } catch (e) {
-                // Fallback к базовому WebM
-                console.warn('Advanced codecs not supported, falling back to basic WebM');
-                recorder = new MediaRecorder(combinedStream, {
-                    mimeType: 'video/webm;codecs=vp8,opus',
-                    videoBitsPerSecond: settings.video,
-                    audioBitsPerSecond: settings.audio,
-                });
+            // Выбираем поддерживаемый MIME тип
+            let selectedMimeType = '';
+            for (const mimeType of config.mimeTypes) {
+                if (MediaRecorder.isTypeSupported(mimeType)) {
+                    selectedMimeType = mimeType;
+                    break;
+                }
             }
+            
+            if (!selectedMimeType) {
+                throw new Error(`No supported codec found for ${format} format`);
+            }
+            
+            console.log(`Export using: ${selectedMimeType}`);
+            
+            const recorder = new MediaRecorder(combinedStream, {
+                mimeType: selectedMimeType,
+                videoBitsPerSecond: config.video,
+                audioBitsPerSecond: config.audio,
+            });
             
             const chunks = [];
             recorder.ondataavailable = e => {
@@ -1157,8 +1215,10 @@ export class VideoMerger extends VideoProcessor {
                     if (audioContext) audioContext.close().catch(e => console.warn("Error closing audio context:", e));
                     
                     if (chunks.length > 0) {
-                        const blob = new Blob(chunks, { type: 'video/webm' });
-                        this.debugElement.textContent = "Status: Export finished.";
+                        // Определяем расширение файла
+                        const fileType = selectedMimeType.includes('mp4') ? 'video/mp4' : 'video/webm';
+                        const blob = new Blob(chunks, { type: fileType });
+                        this.debugElement.textContent = `Status: Export finished (${format.toUpperCase()}).`;
                         resolve(blob);
                     } else {
                         reject(new Error("Export resulted in an empty file."));
@@ -1173,7 +1233,7 @@ export class VideoMerger extends VideoProcessor {
 
                 recorder.start(100);
                 
-                // Рендерим видео с эффектами и синхронизированным аудио
+                // Рендерим видео с синхронизированным аудио
                 await this.renderVideoWithSynchronizedAudio(ctx, canvas, recorder, objectUrlsToRevoke);
                 
                 setTimeout(() => {
@@ -1189,46 +1249,60 @@ export class VideoMerger extends VideoProcessor {
         }
     }
 
-    // Новый метод для последовательного воспроизведения аудио из видео сегментов
-    async setupSequentialAudioForExport(destination, audioContext, objectUrlsToRevoke) {
-        // Создаем отдельные аудио элементы для каждого видео сегмента
-        this.exportAudioElements = [];
+    // Новый метод для настройки оригинального аудио из видео
+    async setupOriginalVideoAudioForExport(destination, audioContext, objectUrlsToRevoke) {
+        this.exportVideoAudioElements = [];
         
         for (let i = 0; i < this.videos.length; i++) {
             const videoFile = this.videos[i];
-            const audioSrc = URL.createObjectURL(videoFile);
-            objectUrlsToRevoke.push(audioSrc);
+            const videoSrc = URL.createObjectURL(videoFile);
+            objectUrlsToRevoke.push(videoSrc);
             
-            const audioElement = document.createElement('audio');
-            audioElement.src = audioSrc;
-            audioElement.preload = 'auto';
+            // Создаем видео элемент для извлечения аудио
+            const videoElement = document.createElement('video');
+            videoElement.src = videoSrc;
+            videoElement.muted = false; // ВАЖНО: не отключаем звук
+            videoElement.preload = 'auto';
+            videoElement.crossOrigin = 'anonymous';
             
             try {
                 await new Promise((resolve, reject) => {
-                    audioElement.onloadedmetadata = resolve;
-                    audioElement.onerror = () => reject(new Error(`Failed to load audio from video ${i+1}`));
+                    videoElement.onloadedmetadata = resolve;
+                    videoElement.onerror = () => reject(new Error(`Failed to load video ${i+1} for audio`));
                     setTimeout(reject, 5000);
                 });
                 
-                // Создаем gain узел для каждого сегмента
-                const segmentGain = audioContext.createGain();
-                segmentGain.gain.value = 0; // Начинаем с тишины
-                
-                const sourceNode = audioContext.createMediaElementSource(audioElement);
-                sourceNode.connect(segmentGain);
-                segmentGain.connect(destination);
-                
-                this.exportAudioElements.push({
-                    element: audioElement,
-                    gain: segmentGain,
-                    duration: this.durations[i] || 0,
-                    index: i
-                });
+                // Проверяем наличие аудио дорожки
+                if (videoElement.mozHasAudio !== false && videoElement.webkitAudioDecodedByteCount !== 0) {
+                    // Создаем аудио источник из видео
+                    const audioSource = audioContext.createMediaElementSource(videoElement);
+                    
+                    // Создаем gain узел для управления громкостью
+                    const gainNode = audioContext.createGain();
+                    gainNode.gain.value = 0; // Начинаем с тишины
+                    
+                    // Подключаем: источник -> gain -> назначение
+                    audioSource.connect(gainNode);
+                    gainNode.connect(destination);
+                    
+                    this.exportVideoAudioElements.push({
+                        element: videoElement,
+                        gainNode: gainNode,
+                        duration: this.durations[i] || 0,
+                        index: i
+                    });
+                    
+                    console.log(`Audio setup for video ${i+1} completed`);
+                } else {
+                    console.warn(`Video ${i+1} appears to have no audio track`);
+                }
                 
             } catch (error) {
                 console.warn(`Failed to setup audio from video ${i+1}:`, error);
             }
         }
+        
+        return this.exportVideoAudioElements;
     }
 
     // Метод для настройки наложенного аудио
@@ -1241,8 +1315,9 @@ export class VideoMerger extends VideoProcessor {
             
             const overlayAudioElement = document.createElement('audio');
             overlayAudioElement.src = audioSrc;
-            overlayAudioElement.loop = true; // Зацикливаем наложенное аудио
+            overlayAudioElement.loop = true;
             overlayAudioElement.preload = 'auto';
+            overlayAudioElement.crossOrigin = 'anonymous';
             
             await new Promise((resolve, reject) => {
                 overlayAudioElement.onloadedmetadata = resolve;
@@ -1250,36 +1325,35 @@ export class VideoMerger extends VideoProcessor {
                 setTimeout(reject, 3000);
             });
             
-            // Создаем gain узел для наложенного аудио
+            const overlaySource = audioContext.createMediaElementSource(overlayAudioElement);
             const overlayGain = audioContext.createGain();
-            overlayGain.gain.value = 0.7; // Немного тише оригинального
+            overlayGain.gain.value = 0.5; // Немного тише основного звука
             
-            const overlaySourceNode = audioContext.createMediaElementSource(overlayAudioElement);
-            overlaySourceNode.connect(overlayGain);
+            overlaySource.connect(overlayGain);
             overlayGain.connect(destination);
             
             this.exportOverlayAudio = {
                 element: overlayAudioElement,
-                gain: overlayGain
+                gainNode: overlayGain
             };
+            
+            console.log("Overlay audio setup completed");
             
         } catch (error) {
             console.warn("Failed to setup overlay audio:", error);
         }
     }
 
-    // Новый метод рендеринга с синхронизированным аудио
+    // Улучшенный рендеринг с синхронизированным аудио
     async renderVideoWithSynchronizedAudio(ctx, canvas, recorder, objectUrlsToRevoke) {
         this.debugElement.textContent = "Status: Rendering video with synchronized audio...";
         
-        // Запускаем наложенное аудио если есть
+        // Запускаем наложенное аудио в фоне если есть
         if (this.exportOverlayAudio) {
             this.exportOverlayAudio.element.currentTime = 0;
-            await this.exportOverlayAudio.element.play().catch(e => 
-                console.warn("Failed to play overlay audio:", e));
+            this.exportOverlayAudio.element.play().catch(e => 
+                console.warn("Failed to start overlay audio:", e));
         }
-        
-        let totalElapsed = 0;
         
         for (let i = 0; i < this.videos.length; i++) {
             if (recorder.state !== 'recording') break;
@@ -1290,12 +1364,14 @@ export class VideoMerger extends VideoProcessor {
             if (segmentDuration <= 0) continue;
             
             try {
+                // Создаем видео элемент для рендеринга
                 const segmentSrc = URL.createObjectURL(videoFile);
                 objectUrlsToRevoke.push(segmentSrc);
                 
                 const segmentVideo = document.createElement('video');
                 segmentVideo.src = segmentSrc;
-                segmentVideo.muted = true; // Отключаем прямой звук, используем аудио элементы
+                segmentVideo.muted = true; // Отключаем прямой звук для рендеринга
+                segmentVideo.preload = 'auto';
                 
                 await new Promise((resolve, reject) => {
                     segmentVideo.onloadedmetadata = resolve;
@@ -1303,48 +1379,49 @@ export class VideoMerger extends VideoProcessor {
                     setTimeout(reject, 5000);
                 });
                 
-                // Запускаем аудио для текущего сегмента
-                const currentAudioElement = this.exportAudioElements?.find(ae => ae.index === i);
+                // Включаем аудио для текущего сегмента
+                const currentAudioElement = this.exportVideoAudioElements?.find(ae => ae.index === i);
                 if (currentAudioElement) {
-                    // Включаем звук для текущего сегмента
-                    currentAudioElement.gain.gain.value = 1;
+                    currentAudioElement.gainNode.gain.value = 1.0; // Включаем звук
                     currentAudioElement.element.currentTime = 0;
-                    await currentAudioElement.element.play().catch(e => 
+                    currentAudioElement.element.play().catch(e => 
                         console.warn(`Failed to play audio for segment ${i+1}:`, e));
                 }
                 
+                // Запускаем видео
                 segmentVideo.currentTime = 0;
                 await segmentVideo.play();
                 
                 const startTime = Date.now();
                 const targetDuration = segmentDuration * 1000;
                 
+                // Рендерим кадры
                 while (Date.now() - startTime < targetDuration && !segmentVideo.ended && recorder.state === 'recording') {
-                    // Рисуем кадр
-                    ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
+                    // Рисуем видео кадр
+                    if (segmentVideo.videoWidth > 0 && segmentVideo.videoHeight > 0) {
+                        ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
+                        
+                        // Применяем фильтры
+                        this.applyFiltersToCanvas(ctx, canvas);
+                        
+                        // Добавляем текст
+                        this.renderTextOnCanvas(ctx, canvas);
+                    }
                     
-                    // Применяем фильтры если есть
-                    this.applyFiltersToCanvas(ctx, canvas);
-                    
-                    // Добавляем текст если есть
-                    this.renderTextOnCanvas(ctx, canvas);
-                    
-                    // Ждем следующий кадр (30 FPS)
-                    await new Promise(resolve => setTimeout(resolve, 33));
+                    // Ждем следующий кадр
+                    await new Promise(resolve => setTimeout(resolve, 33)); // ~30 FPS
                 }
                 
                 segmentVideo.pause();
                 
-                // Выключаем звук для текущего сегмента
+                // Выключаем аудио для завершенного сегмента
                 if (currentAudioElement) {
-                    currentAudioElement.gain.gain.value = 0;
+                    currentAudioElement.gainNode.gain.value = 0;
                     currentAudioElement.element.pause();
                 }
                 
-                totalElapsed += segmentDuration;
-                
             } catch (error) {
-                console.error(`Error processing video segment ${i+1}:`, error);
+                console.error(`Error processing segment ${i+1}:`, error);
             }
         }
         
