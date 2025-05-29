@@ -114,5 +114,6 @@ export class AudioOverlay extends VideoProcessor {
                                // Clearing it here might cause issues if VideoMerger expects it to persist.
                                // Let VideoMerger manage the lifecycle of audioFile.
         // this.debugElement.textContent = 'Status: Audio cleared'; 
+        //
     }
 }
