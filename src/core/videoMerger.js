@@ -872,7 +872,7 @@ export class VideoMerger extends VideoProcessor {
             }
             
             video.muted = true;
-            video.preload = 'auto'; // Более быстрая загрузка
+            video.preload = 'auto';
             let recorder; 
             let canvas;
             let isRecording = false;
@@ -893,18 +893,20 @@ export class VideoMerger extends VideoProcessor {
                 }
                 
                 canvas = document.createElement('canvas');
+                // Оптимизация: устанавливаем willReadFrequently для лучшей производительности
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                
                 // Уменьшаем разрешение для лучшей производительности
                 const scaleFactor = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
                 canvas.width = Math.floor(video.videoWidth * scaleFactor);
                 canvas.height = Math.floor(video.videoHeight * scaleFactor);
-                const ctx = canvas.getContext('2d');
                 
-                const stream = canvas.captureStream(20); // Уменьшенный FPS
+                const stream = canvas.captureStream(20);
                 
                 try {
                     recorder = new MediaRecorder(stream, {
                         mimeType: 'video/webm;codecs=vp8', 
-                        videoBitsPerSecond: 300000 // Сильно уменьшенный битрейт для плавности
+                        videoBitsPerSecond: 300000
                     });
                 } catch (e) {
                     cleanup();
@@ -938,11 +940,11 @@ export class VideoMerger extends VideoProcessor {
                 video.onseeked = () => {
                     if (!isRecording && recorder.state === 'inactive') {
                         isRecording = true;
-                        recorder.start(300); // Больший интервал для стабильности
+                        recorder.start(500); // Увеличиваем интервал для стабильности
                         
                         const targetDuration = (end - start) * 1000;
                         const startTime = Date.now();
-                        const targetFPS = 15; // Низкий FPS для производительности
+                        const targetFPS = 12; // Еще более низкий FPS для плавности
                         
                         const renderFrame = () => {
                             const elapsed = Date.now() - startTime;
@@ -1016,7 +1018,8 @@ export class VideoMerger extends VideoProcessor {
         const { 
             includeOriginalAudio = true, 
             includeOverlayAudio = true,
-            quality = 'medium'
+            quality = 'medium',
+            format = 'webm' // Добавляем поддержку формата
         } = exportOptions;
         
         this.debugElement.textContent = "Status: Creating export stream...";
@@ -1030,7 +1033,8 @@ export class VideoMerger extends VideoProcessor {
             // Настройка видео потока
             if (this.videos && this.videos.length > 0) {
                 canvas = document.createElement('canvas');
-                ctx = canvas.getContext('2d');
+                // Оптимизация: устанавливаем willReadFrequently
+                ctx = canvas.getContext('2d', { willReadFrequently: true });
                 
                 // Получаем размеры из первого видео
                 const firstVideoFile = this.videos[0];
@@ -1059,16 +1063,13 @@ export class VideoMerger extends VideoProcessor {
                 audioContext = new AudioContext();
                 mixedAudioDestination = audioContext.createMediaStreamDestination();
                 
-                // Создаем главный микшер
                 const mainGain = audioContext.createGain();
                 mainGain.connect(mixedAudioDestination);
                 
-                // Добавляем оригинальное аудио если нужно
                 if (includeOriginalAudio && this.videos.length > 0) {
                     await this.setupOriginalAudioForExportImproved(mainGain, audioContext, objectUrlsToRevoke);
                 }
                 
-                // Добавляем наложенное аудио если нужно
                 if (includeOverlayAudio && this.audioFile) {
                     await this.addOverlayAudioToMixImproved(mainGain, audioContext, objectUrlsToRevoke);
                 }
@@ -1083,19 +1084,41 @@ export class VideoMerger extends VideoProcessor {
             
             const combinedStream = new MediaStream(combinedStreamTracks);
             
-            // Улучшенные настройки качества
-            const qualitySettings = {
-                low: { video: 800000, audio: 96000 },
-                medium: { video: 1500000, audio: 128000 },
-                high: { video: 3000000, audio: 192000 }
+            // Улучшенные настройки качества с поддержкой разных форматов
+            const formatSettings = {
+                webm: {
+                    mimeType: 'video/webm;codecs=vp8,opus',
+                    low: { video: 800000, audio: 96000 },
+                    medium: { video: 1500000, audio: 128000 },
+                    high: { video: 3000000, audio: 192000 }
+                },
+                mp4: {
+                    mimeType: 'video/mp4;codecs=h264,aac',
+                    low: { video: 1000000, audio: 128000 },
+                    medium: { video: 2000000, audio: 128000 },
+                    high: { video: 4000000, audio: 192000 }
+                }
             };
-            const settings = qualitySettings[quality] || qualitySettings.medium;
             
-            const recorder = new MediaRecorder(combinedStream, {
-                mimeType: 'video/webm;codecs=vp8,opus',
-                videoBitsPerSecond: settings.video,
-                audioBitsPerSecond: settings.audio,
-            });
+            const formatConfig = formatSettings[format] || formatSettings.webm;
+            const settings = formatConfig[quality] || formatConfig.medium;
+            
+            let recorder;
+            try {
+                recorder = new MediaRecorder(combinedStream, {
+                    mimeType: formatConfig.mimeType,
+                    videoBitsPerSecond: settings.video,
+                    audioBitsPerSecond: settings.audio,
+                });
+            } catch (e) {
+                // Fallback to WebM if the requested format is not supported
+                console.warn(`Format ${format} not supported, falling back to WebM`);
+                recorder = new MediaRecorder(combinedStream, {
+                    mimeType: 'video/webm;codecs=vp8,opus',
+                    videoBitsPerSecond: settings.video,
+                    audioBitsPerSecond: settings.audio,
+                });
+            }
             
             const chunks = [];
             recorder.ondataavailable = e => {
@@ -1108,7 +1131,9 @@ export class VideoMerger extends VideoProcessor {
                     if (audioContext) audioContext.close().catch(e => console.warn("Error closing audio context:", e));
                     
                     if (chunks.length > 0) {
-                        const blob = new Blob(chunks, { type: 'video/webm' });
+                        // Правильно устанавливаем MIME type для экспортированного файла
+                        const mimeType = format === 'mp4' ? 'video/mp4' : 'video/webm';
+                        const blob = new Blob(chunks, { type: mimeType });
                         this.debugElement.textContent = "Status: Export finished.";
                         resolve(blob);
                     } else {
@@ -1122,12 +1147,11 @@ export class VideoMerger extends VideoProcessor {
                     reject(e.error || new Error("MediaRecorder error"));
                 };
 
-                recorder.start(100); // Чаще записываем данные
+                recorder.start(100);
                 
                 // Рендерим видео с эффектами
                 await this.renderVideoWithEffectsImproved(ctx, canvas, recorder, objectUrlsToRevoke);
                 
-                // Небольшая задержка перед остановкой
                 setTimeout(() => {
                     if (recorder.state === 'recording') {
                         recorder.stop();
@@ -1142,7 +1166,9 @@ export class VideoMerger extends VideoProcessor {
     }
 
     async setupOriginalAudioForExportImproved(destination, audioContext, objectUrlsToRevoke) {
-        // Создаем последовательный плеер для аудио сегментов
+        const audioElements = [];
+        
+        // Создаем аудио элементы для каждого видео сегмента
         for (let i = 0; i < this.videos.length; i++) {
             const videoFile = this.videos[i];
             const audioSrc = URL.createObjectURL(videoFile);
@@ -1151,7 +1177,6 @@ export class VideoMerger extends VideoProcessor {
             const audioElement = document.createElement('audio');
             audioElement.src = audioSrc;
             audioElement.muted = false;
-            audioElement.volume = 1.0;
             
             try {
                 await new Promise((resolve, reject) => {
@@ -1161,20 +1186,19 @@ export class VideoMerger extends VideoProcessor {
                 });
                 
                 const sourceNode = audioContext.createMediaElementSource(audioElement);
-                const gainNode = audioContext.createGain();
-                gainNode.gain.value = 0.8; // Немного уменьшаем громкость оригинального аудио
+                sourceNode.connect(destination);
                 
-                sourceNode.connect(gainNode);
-                gainNode.connect(destination);
-                
-                // Запускаем аудио
-                audioElement.currentTime = 0;
-                audioElement.play().catch(e => console.warn(`Failed to play audio segment ${i+1}:`, e));
+                audioElements.push({
+                    element: audioElement,
+                    duration: this.durations[i] || 0
+                });
                 
             } catch (error) {
                 console.warn(`Failed to setup audio from video ${i+1}:`, error);
             }
         }
+        
+        return audioElements;
     }
 
     async addOverlayAudioToMixImproved(destination, audioContext, objectUrlsToRevoke) {
@@ -1184,26 +1208,21 @@ export class VideoMerger extends VideoProcessor {
             const audioSrc = URL.createObjectURL(this.audioFile);
             objectUrlsToRevoke.push(audioSrc);
             
-            const overlayAudio = document.createElement('audio');
-            overlayAudio.src = audioSrc;
-            overlayAudio.loop = true; // Зацикливаем наложенное аудио
-            overlayAudio.volume = 1.0;
+            const audioElement = document.createElement('audio');
+            audioElement.src = audioSrc;
+            audioElement.loop = false;
             
             await new Promise((resolve, reject) => {
-                overlayAudio.onloadedmetadata = resolve;
-                overlayAudio.onerror = () => reject(new Error("Failed to load overlay audio"));
+                audioElement.onloadedmetadata = resolve;
+                audioElement.onerror = () => reject(new Error("Failed to load overlay audio"));
                 setTimeout(reject, 3000);
             });
             
-            const overlaySource = audioContext.createMediaElementSource(overlayAudio);
-            const overlayGain = audioContext.createGain();
-            overlayGain.gain.value = 0.5; // Уменьшаем громкость наложенного аудио
+            const sourceNode = audioContext.createMediaElementSource(audioElement);
+            sourceNode.connect(destination);
             
-            overlaySource.connect(overlayGain);
-            overlayGain.connect(destination);
-            
-            overlayAudio.currentTime = 0;
-            await overlayAudio.play();
+            audioElement.currentTime = 0;
+            await audioElement.play();
             
         } catch (error) {
             console.warn("Failed to add overlay audio to mix:", error);
@@ -1240,142 +1259,170 @@ export class VideoMerger extends VideoProcessor {
                 
                 const startTime = Date.now();
                 const targetDuration = segmentDuration * 1000;
-                let frameCount = 0;
-                const targetFPS = 30;
                 
-                const renderLoop = () => {
-                    if (recorder.state !== 'recording') return;
+                while (Date.now() - startTime < targetDuration && !segmentVideo.ended && recorder.state === 'recording') {
+                    // Рисуем кадр
+                    ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
                     
-                    const elapsed = Date.now() - startTime;
-                    if (elapsed >= targetDuration || segmentVideo.ended) {
-                        segmentVideo.pause();
-                        return;
-                    }
+                    // Применяем фильтры если есть
+                    this.applyFiltersToCanvas(ctx, canvas);
                     
-                    if (segmentVideo.videoWidth > 0 && segmentVideo.videoHeight > 0) {
-                        // Очищаем canvas
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        
-                        // Рисуем видео
-                        ctx.drawImage(segmentVideo, 0, 0, canvas.width, canvas.height);
-                        
-                        // Применяем фильтры ОБЯЗАТЕЛЬНО
-                        this.applyFiltersToCanvasImproved(ctx, canvas);
-                        
-                        // Добавляем текст ОБЯЗАТЕЛЬНО
-                        this.renderTextOnCanvasImproved(ctx, canvas);
-                    }
+                    // Добавляем текст если есть
+                    this.renderTextOnCanvas(ctx, canvas);
                     
-                    frameCount++;
-                    setTimeout(renderLoop, 1000 / targetFPS);
-                };
+                    // Ждем следующий кадр
+                    await new Promise(resolve => setTimeout(resolve, 33)); // ~30 FPS
+                }
                 
-                renderLoop();
+                segmentVideo.pause();
                 
-                // Ждем окончания сегмента
-                await new Promise(resolve => setTimeout(resolve, targetDuration + 100));
-                
-            } catch (segmentError) {
-                console.error(`Error processing segment ${i+1}:`, segmentError);
+            } catch (error) {
+                console.error(`Error processing video segment ${i+1}:`, error);
             }
         }
     }
 
-    applyFiltersToCanvasImproved(ctx, canvas) {
+    applyFiltersToCanvas(ctx, canvas) {
         const filterProcessor = this.processors?.filter;
         if (!filterProcessor || !filterProcessor.currentFilter) return;
         
-        try {
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            
-            switch (filterProcessor.currentFilter) {
-                case 'grayscale':
-                    for (let i = 0; i < data.length; i += 4) {
-                        const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-                        data[i] = gray;
-                        data[i + 1] = gray;
-                        data[i + 2] = gray;
-                    }
-                    break;
-                case 'sepia':
-                    for (let i = 0; i < data.length; i += 4) {
-                        const r = data[i], g = data[i + 1], b = data[i + 2];
-                        data[i] = Math.min(255, Math.round(r * 0.393 + g * 0.769 + b * 0.189));
-                        data[i + 1] = Math.min(255, Math.round(r * 0.349 + g * 0.686 + b * 0.168));
-                        data[i + 2] = Math.min(255, Math.round(r * 0.272 + g * 0.534 + b * 0.131));
-                    }
-                    break;
-                case 'invert':
-                    for (let i = 0; i < data.length; i += 4) {
-                        data[i] = 255 - data[i];
-                        data[i + 1] = 255 - data[i + 1];
-                        data[i + 2] = 255 - data[i + 2];
-                    }
-                    break;
-            }
-            
-            ctx.putImageData(imageData, 0, 0);
-        } catch (error) {
-            console.warn("Error applying filter to canvas:", error);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        switch (filterProcessor.currentFilter) {
+            case 'grayscale':
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    data[i] = gray;
+                    data[i + 1] = gray;
+                    data[i + 2] = gray;
+                }
+                break;
+            case 'sepia':
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i], g = data[i + 1], b = data[i + 2];
+                    data[i] = Math.min(255, r * 0.393 + g * 0.769 + b * 0.189);
+                    data[i + 1] = Math.min(255, r * 0.349 + g * 0.686 + b * 0.168);
+                    data[i + 2] = Math.min(255, r * 0.272 + g * 0.534 + b * 0.131);
+                }
+                break;
+            case 'invert':
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = 255 - data[i];
+                    data[i + 1] = 255 - data[i + 1];
+                    data[i + 2] = 255 - data[i + 2];
+                }
+                break;
         }
+        
+        ctx.putImageData(imageData, 0, 0);
     }
 
-    renderTextOnCanvasImproved(ctx, canvas) {
+    renderTextOnCanvas(ctx, canvas) {
         const textProcessor = this.processors?.text;
-        if (!textProcessor || !textProcessor.textElement || !textProcessor.textElement.textContent) return;
+        if (!textProcessor || !textProcessor.textElement) return;
         
-        try {
-            const textElement = textProcessor.textElement;
-            const text = textElement.textContent;
-            const fontSize = parseInt(textElement.style.fontSize) || 24;
-            const color = textElement.style.color || '#ffffff';
-            
-            // Улучшенные настройки текста
-            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-            ctx.fillStyle = color;
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = Math.max(2, fontSize / 12);
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            
-            // Определяем позицию текста
-            let x, y;
-            const textMetrics = ctx.measureText(text);
-            const textWidth = textMetrics.width;
-            const textHeight = fontSize;
-            
-            const position = textElement.dataset.position || 'top-left';
-            const margin = Math.max(10, canvas.width * 0.02);
-            
-            switch (position) {
-                case 'top-left':
-                    x = margin;
-                    y = margin;
-                    break;
-                case 'top-right':
-                    x = canvas.width - textWidth - margin;
-                    y = margin;
-                    break;
-                case 'bottom-left':
-                    x = margin;
-                    y = canvas.height - textHeight - margin;
-                    break;
-                case 'bottom-right':
-                    x = canvas.width - textWidth - margin;
-                    y = canvas.height - textHeight - margin;
-                    break;
-                default:
-                    x = margin;
-                    y = margin;
-            }
-            
-            // Рисуем обводку и текст
-            ctx.strokeText(text, x, y);
-            ctx.fillText(text, x, y);
-        } catch (error) {
-            console.warn("Error rendering text on canvas:", error);
+        // Проверяем есть ли текст в div элементах или в textContent
+        const textDivs = textProcessor.textElement.querySelectorAll('div');
+        let lines = [];
+        
+        if (textDivs.length > 0) {
+            lines = Array.from(textDivs).map(div => div.textContent).filter(line => line.trim());
+        } else if (textProcessor.textElement.textContent) {
+            lines = [textProcessor.textElement.textContent];
         }
+        
+        if (lines.length === 0) return;
+        
+        const fontSize = parseInt(textProcessor.textElement.style.fontSize) || 24;
+        const color = textProcessor.textElement.style.color || '#ffffff';
+        const position = textProcessor.textElement.dataset.position || 'top-left';
+        
+        // Адаптивный размер шрифта для canvas
+        const scaledFontSize = Math.max(12, Math.min(fontSize, canvas.width / 20));
+        
+        ctx.font = `bold ${scaledFontSize}px Arial, sans-serif`;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = Math.max(1, scaledFontSize / 15);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        
+        const lineHeight = scaledFontSize * 1.3;
+        const margin = Math.max(10, canvas.width * 0.03);
+        const maxWidth = canvas.width - (margin * 2);
+        
+        // Разбиваем длинные строки чтобы поместились в canvas
+        const wrappedLines = [];
+        lines.forEach(line => {
+            const words = line.split(' ');
+            let currentLine = '';
+            
+            words.forEach(word => {
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const metrics = ctx.measureText(testLine);
+                
+                if (metrics.width <= maxWidth) {
+                    currentLine = testLine;
+                } else {
+                    if (currentLine) {
+                        wrappedLines.push(currentLine);
+                        currentLine = word;
+                    } else {
+                        // Если одно слово слишком длинное, обрезаем его
+                        wrappedLines.push(word.substring(0, Math.floor(maxWidth / (scaledFontSize * 0.6))));
+                    }
+                }
+            });
+            
+            if (currentLine) {
+                wrappedLines.push(currentLine);
+            }
+        });
+        
+        // Ограничиваем количество строк чтобы поместились в видео
+        const maxLines = Math.floor((canvas.height - margin * 2) / lineHeight);
+        const finalLines = wrappedLines.slice(0, maxLines);
+        
+        const totalHeight = finalLines.length * lineHeight;
+        
+        // Определяем начальную позицию
+        let startX, startY;
+        
+        switch (position) {
+            case 'top-left':
+                startX = margin;
+                startY = margin;
+                break;
+            case 'top-right':
+                startX = canvas.width - margin;
+                startY = margin;
+                ctx.textAlign = 'right';
+                break;
+            case 'bottom-left':
+                startX = margin;
+                startY = Math.max(margin, canvas.height - totalHeight - margin);
+                break;
+            case 'bottom-right':
+                startX = canvas.width - margin;
+                startY = Math.max(margin, canvas.height - totalHeight - margin);
+                ctx.textAlign = 'right';
+                break;
+            default:
+                startX = margin;
+                startY = margin;
+        }
+        
+        // Рисуем каждую строку с обводкой
+        finalLines.forEach((line, index) => {
+            const y = startY + (index * lineHeight);
+            
+            // Проверяем что текст не выходит за границы
+            if (y + scaledFontSize <= canvas.height - margin) {
+                ctx.strokeText(line, startX, y);
+                ctx.fillText(line, startX, y);
+            }
+        });
     }
 
     async removeVideo(index) { 

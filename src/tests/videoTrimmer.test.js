@@ -4,22 +4,22 @@ describe('VideoTrimmer', () => {
   let dependencies;
 
   beforeEach(() => {
+    // Создаем мок для VideoMerger
+    const mockMerger = {
+      videos: [new File([''], 'video.mp4', { type: 'video/mp4' })],
+      totalDuration: 20,
+      trim: jest.fn().mockResolvedValue(undefined)
+    };
+    
     dependencies = {
       videoElement: document.createElement('video'),
       debugElement: document.createElement('p'),
-      timelineRange: document.createElement('input'),
-      currentTime: document.createElement('span'),
-      duration: document.createElement('span'),
-      playPauseBtn: document.createElement('button'),
+      merger: mockMerger
     };
-    dependencies.timelineRange.type = 'range';
+
     Object.defineProperty(dependencies.videoElement, 'duration', { value: 20, configurable: true });
     document.body.appendChild(dependencies.videoElement);
     document.body.appendChild(dependencies.debugElement);
-    document.body.appendChild(dependencies.timelineRange);
-    document.body.appendChild(dependencies.currentTime);
-    document.body.appendChild(dependencies.duration);
-    document.body.appendChild(dependencies.playPauseBtn);
   });
 
   afterEach(() => {

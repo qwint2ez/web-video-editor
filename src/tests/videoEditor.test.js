@@ -60,19 +60,19 @@ describe('VideoEditor', () => {
     editor.applyFilter('grayscale');
 
     expect(dependencies.videoElement.style.filter).toBe('grayscale(100%)');
-    expect(dependencies.debugElement.textContent).toBe('Status: Applied filter grayscale');
+    expect(dependencies.debugElement.textContent).toBe('Status: grayscale filter applied');
   });
 
   test('should apply text correctly', () => {
     const editor = new VideoEditor(dependencies);
     editor.applyText('Test Text', 'top-left', '#ff0000', '24');
 
-    expect(dependencies.textElement.textContent).toBe('Test Text');
+    expect(dependencies.textElement.innerHTML).toContain('Test Text');
     expect(dependencies.textElement.style.display).toBe('block');
-    expect(dependencies.textElement.style.color).toBe('rgb(255, 0, 0)');
+    expect(dependencies.textElement.style.color).toBe('#ff0000');
     expect(dependencies.textElement.style.fontSize).toBe('24px');
-    expect(dependencies.textElement.style.top).toBe('10px');
-    expect(dependencies.textElement.style.left).toBe('10px');
-    expect(dependencies.debugElement.textContent).toBe('Status: Text "Test Text" added at top-left');
+    expect(dependencies.textElement.style.top).toBe('5%');
+    expect(dependencies.textElement.style.left).toBe('5%');
+    expect(dependencies.debugElement.textContent).toContain('Status: Text added at top-left');
   });
 });

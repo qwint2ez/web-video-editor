@@ -26,6 +26,6 @@ describe('FilterApplier', () => {
     const applier = new FilterApplier(dependencies);
     applier.process({ filter: 'grayscale' });
     expect(dependencies.videoElement.style.filter).toBe('grayscale(100%)');
-    expect(dependencies.debugElement.textContent).toBe('Status: Applied filter grayscale');
+    expect(dependencies.debugElement.textContent).toBe('Status: grayscale filter applied');
   });
 });

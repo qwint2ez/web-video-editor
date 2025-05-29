@@ -470,6 +470,14 @@ function showExportDialog() {
                 
                 <div class="export-options">
                     <div class="option-group">
+                        <label for="formatSelect">Формат видео:</label>
+                        <select id="formatSelect">
+                            <option value="webm">WebM (рекомендуется)</option>
+                            <option value="mp4">MP4 (если поддерживается браузером)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="option-group">
                         <label>
                             <input type="checkbox" id="includeOriginalAudio" checked>
                             Включить оригинальный звук видео
@@ -486,9 +494,9 @@ function showExportDialog() {
                     <div class="option-group">
                         <label for="qualitySelect">Качество:</label>
                         <select id="qualitySelect">
-                            <option value="low">Низкое (быстрый экспорт)</option>
-                            <option value="medium" selected>Среднее</option>
-                            <option value="high">Высокое (медленный экспорт)</option>
+                            <option value="low">Низкое (быстрый экспорт, меньший размер)</option>
+                            <option value="medium" selected>Среднее (баланс качества и размера)</option>
+                            <option value="high">Высокое (медленный экспорт, лучшее качество)</option>
                         </select>
                     </div>
                 </div>
@@ -497,10 +505,18 @@ function showExportDialog() {
                     <button class="export-btn" id="startExportBtn">Начать экспорт</button>
                     <button class="cancel-btn" id="cancelExportBtn">Отмена</button>
                 </div>
+                
+                <div class="export-info">
+                    <small>
+                        <strong>Примечание:</strong> WebM формат лучше поддерживается для веб-плееров.
+                        MP4 может не поддерживаться некоторыми браузерами для записи.
+                    </small>
+                </div>
             </div>
         `;
 
         const startExport = async () => {
+            const format = dialog.querySelector('#formatSelect').value;
             const includeOriginalAudio = dialog.querySelector('#includeOriginalAudio').checked;
             const includeOverlayAudio = dialog.querySelector('#includeOverlayAudio').checked;
             const quality = dialog.querySelector('#qualitySelect').value;
@@ -516,6 +532,7 @@ function showExportDialog() {
                 }
 
                 const videoBlob = await merger.exportVideo({
+                    format,
                     includeOriginalAudio,
                     includeOverlayAudio,
                     quality
@@ -528,7 +545,11 @@ function showExportDialog() {
                 const url = URL.createObjectURL(videoBlob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `video-${Date.now()}.webm`;
+                
+                // Определяем расширение файла на основе формата
+                const extension = format === 'mp4' ? 'mp4' : 'webm';
+                link.download = `video-${Date.now()}.${extension}`;
+                
                 link.click();
                 URL.revokeObjectURL(url);
                 

@@ -14,17 +14,24 @@
 
     <!-- Initial upload section -->
     <div class="upload-section">
-        <label for="videoInput" class="upload-btn">Upload Media</label>
-        <input type="file" id="videoInput" accept="video/*, audio/*" multiple style="display: none;">
+        <label for="videoInput" class="upload-btn">📁 Upload Media</label>
+        <input type="file" id="videoInput" accept="video/mp4,video/webm,video/avi,video/mov,video/mkv,audio/mp3,audio/wav,audio/aac,audio/ogg" multiple style="display: none;">
+        <div class="format-info">
+            <small>
+                <strong>Supported formats:</strong><br>
+                Video: MP4, WebM, AVI, MOV, MKV<br>
+                Audio: MP3, WAV, AAC, OGG
+            </small>
+        </div>
     </div>
 
     <p id="debug">Status: Waiting for video upload...</p>
 
     <!-- Video list section (hidden initially) -->
     <div id="uploadedVideosSection" class="hidden">
-        <h3>Uploaded Media</h3>
+        <h3>📋 Uploaded Media</h3>
         <ul id="uploadedMediaList"></ul>
-        <button id="addToTimelineBtn" class="action-btn">Add Selected to Timeline</button>
+        <button id="addToTimelineBtn" class="action-btn">➕ Add Selected to Timeline</button>
     </div>
 
     <!-- Editor sections (hidden initially) -->
@@ -40,49 +47,53 @@
                     <!-- Segments will be added here by JS -->
                 </div>
                 <div class="timeline-controls">
-                    <button id="playPauseBtn" class="player-btn">Play</button>
+                    <button id="playPauseBtn" class="player-btn">▶️ Play</button>
                     <span id="currentTime">00:00</span> / <span id="duration">00:00</span>
-                    <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="1">
-                    <button id="downloadBtn" class="player-btn">Download</button>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>🔊</span>
+                        <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="1">
+                    </div>
+                    <button id="downloadBtn" class="player-btn">💾 Download</button>
                 </div>
             </div>
         </div>
 
         <div class="editing-controls">
             <div class="controls">
-                <h3>Trim</h3>
+                <h3>✂️ Trim Video</h3>
                 <div class="trim-controls">
-                    <input type="number" id="start" min="0" step="0.1" value="0" placeholder="Start">
-                    <input type="number" id="end" min="0" step="0.1" value="0" placeholder="End">
+                    <input type="number" id="start" min="0" step="0.1" value="0" placeholder="Start (sec)">
+                    <input type="number" id="end" min="0" step="0.1" value="0" placeholder="End (sec)">
                     <button id="applyTrimBtn">Apply Trim</button>
                 </div>
             </div>
 
             <div class="controls">
-                <h3>Text Overlay</h3>
-                <input type="text" id="textInput" placeholder="Enter text">
+                <h3>📝 Text Overlay</h3>
+                <textarea id="textInput" placeholder="Enter text (max 30 chars per line)&#10;Use line breaks for multiple lines&#10;Example:&#10;First line&#10;Second line"></textarea>
                 <select id="textPosition">
-                    <option value="top-left">Top Left</option>
-                    <option value="top-right">Top Right</option>
-                    <option value="bottom-left">Bottom Left</option>
-                    <option value="bottom-right">Bottom Right</option>
+                    <option value="top-left">📍 Top Left</option>
+                    <option value="top-right">📍 Top Right</option>
+                    <option value="bottom-left">📍 Bottom Left</option>
+                    <option value="bottom-right">📍 Bottom Right</option>
                 </select>
-                <input type="color" id="textColor" value="#ffffff">
+                <input type="color" id="textColor" value="#ffffff" title="Text Color">
                 <select id="textSize">
                     <option value="16">Small (16px)</option>
-                    <option value="24">Medium (24px)</option>
+                    <option value="24" selected>Medium (24px)</option>
                     <option value="32">Large (32px)</option>
+                    <option value="48">Extra Large (48px)</option>
                 </select>
                 <button id="applyTextBtn">Apply Text</button>
             </div>
 
             <div class="controls">
-                <h3>Filters</h3>
+                <h3>🎨 Filters</h3>
                 <select id="filterSelect">
                     <option value="">Select Filter</option>
-                    <option value="grayscale">Grayscale</option>
-                    <option value="sepia">Sepia</option>
-                    <option value="invert">Invert</option>
+                    <option value="grayscale">⚫ Grayscale</option>
+                    <option value="sepia">🟤 Sepia</option>
+                    <option value="invert">🔄 Invert</option>
                 </select>
                 <button id="applyFilterBtn">Apply Filter</button>
             </div>
