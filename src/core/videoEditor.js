@@ -1,7 +1,7 @@
 import { AudioOverlay } from './audioOverlay.js';
-import { FilterApplier } from './filterApplier.js'; // Assuming FilterApplier is correct, not FilterProcessor
+import { FilterApplier } from './filterApplier.js';
 import { TextOverlay } from './textOverlay.js';
-import { VideoLoader } from './videoLoader.js';
+// import { VideoLoader } from './videoLoader.js'; // Удаляем импорт
 import { VideoMerger } from './videoMerger.js';
 import { VideoTrimmer } from './videoTrimmer.js';
 import { VideoExporter } from './videoExporter.js';
@@ -23,28 +23,21 @@ export class VideoEditor {
         try {
             const textOverlayElement = this.dependencies.textElement || this.createTextOverlay();
 
-            // Instantiate UI Managers first if they are needed by core processors
-            // VideoMerger needs timelineUIManager, so instantiate it here.
-            // VideoMerger itself is a dependency for TimelineUIManager to call back methods like seekTo.
-            // This creates a slight circular dependency in terms of instantiation order if not careful.
-            // Solution: Pass a reference or use event-based communication.
-            // For now, we'll pass VideoMerger instance later if TimelineUIManager needs it directly.
-            
             const timelineUIManager = new TimelineUIManager(
                 this.dependencies.timelineBar,
-                null, // VideoMerger instance will be set later or methods called via VideoEditor
+                null, 
                 this.dependencies.videoElement
             );
 
             this.processors = {
-                loader: new VideoLoader(this.dependencies),
+                // loader: new VideoLoader(this.dependencies), // Удаляем инициализацию VideoLoader
                 audio: new AudioOverlay(this.dependencies),
-                filter: new FilterApplier(this.dependencies), // Or FilterProcessor if that's the correct one
+                filter: new FilterApplier(this.dependencies), 
                 text: new TextOverlay({ ...this.dependencies, textElement: textOverlayElement }),
-                merger: new VideoMerger({ ...this.dependencies, timelineUIManager }), // Pass timelineUIManager
+                merger: new VideoMerger({ ...this.dependencies, timelineUIManager }),
                 trimmer: new VideoTrimmer(this.dependencies),
-                exporter: new VideoExporter({ processors: this.processors, debugElement: this.dependencies.debugElement }), // Pass relevant parts of processors
-                timelineUIManager: timelineUIManager, // Store for direct access if needed
+                exporter: new VideoExporter({ processors: this.processors, debugElement: this.dependencies.debugElement }),
+                timelineUIManager: timelineUIManager,
             };
             
             // Now that merger is instantiated, if timelineUIManager needs a direct reference:
@@ -70,10 +63,18 @@ export class VideoEditor {
     createTextOverlay() {
         const overlay = document.createElement('div');
         overlay.id = 'textOverlay';
-        overlay.style.position = 'absolute';
-        overlay.style.pointerEvents = 'none';
-        overlay.style.zIndex = '1';
-        this.dependencies.videoElement.parentElement?.appendChild(overlay);
+        overlay.style.position = 'absolute'; // Добавим стили, если их не было
+        overlay.style.pointerEvents = 'none'; // Чтобы не перехватывал клики
+        overlay.style.zIndex = '1'; // Чтобы был поверх видео, но под контролами если нужно
+        // Убедимся, что videoElement.parentElement существует
+        const parent = this.dependencies.videoElement.parentElement;
+        if (parent) {
+            parent.appendChild(overlay);
+        } else {
+            console.warn('Video element parent not found for text overlay, text overlay might not be visible.');
+            // Можно добавить его в body как крайний случай, но лучше чтобы он был в контейнере видео
+            document.body.appendChild(overlay); 
+        }
         return overlay;
     }
 
