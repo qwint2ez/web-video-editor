@@ -472,9 +472,9 @@ function showExportDialog() {
                     <div class="option-group">
                         <label for="formatSelect">Формат видео:</label>
                         <select id="formatSelect">
-                            <option value="webm">WebM (рекомендуется)</option>
-                            <option value="mp4">MP4 (если поддерживается браузером)</option>
+                            <option value="webm">WebM (рекомендуется для веб)</option>
                         </select>
+                        <small>Только WebM поддерживает качественное аудио в браузере</small>
                     </div>
                     
                     <div class="option-group">
@@ -494,9 +494,9 @@ function showExportDialog() {
                     <div class="option-group">
                         <label for="qualitySelect">Качество:</label>
                         <select id="qualitySelect">
-                            <option value="low">Низкое (быстрый экспорт, меньший размер)</option>
-                            <option value="medium" selected>Среднее (баланс качества и размера)</option>
-                            <option value="high">Высокое (медленный экспорт, лучшее качество)</option>
+                            <option value="low">Низкое (быстрый экспорт, VP8 + Opus)</option>
+                            <option value="medium" selected>Среднее (VP9 + Opus, рекомендуется)</option>
+                            <option value="high">Высокое (VP9 + Opus, лучшее качество)</option>
                         </select>
                     </div>
                 </div>
@@ -508,15 +508,15 @@ function showExportDialog() {
                 
                 <div class="export-info">
                     <small>
-                        <strong>Примечание:</strong> WebM формат лучше поддерживается для веб-плееров.
-                        MP4 может не поддерживаться некоторыми браузерами для записи.
+                        <strong>Примечание:</strong> WebM с кодеками VP9/Opus обеспечивает лучшее качество аудио.
+                        Экспорт может занять время в зависимости от длительности видео.
                     </small>
                 </div>
             </div>
         `;
 
         const startExport = async () => {
-            const format = dialog.querySelector('#formatSelect').value;
+            const format = 'webm'; // Фиксируем формат
             const includeOriginalAudio = dialog.querySelector('#includeOriginalAudio').checked;
             const includeOverlayAudio = dialog.querySelector('#includeOverlayAudio').checked;
             const quality = dialog.querySelector('#qualitySelect').value;
@@ -524,7 +524,7 @@ function showExportDialog() {
             dialog.remove();
             
             try {
-                utils.showStatus('Экспорт видео...');
+                utils.showStatus('Экспорт видео с аудио...');
                 const merger = state.videoEditor?.processors?.merger;
                 
                 if (!merger || !merger.videos || merger.videos.length === 0) {
@@ -545,15 +545,12 @@ function showExportDialog() {
                 const url = URL.createObjectURL(videoBlob);
                 const link = document.createElement('a');
                 link.href = url;
-                
-                // Определяем расширение файла на основе формата
-                const extension = format === 'mp4' ? 'mp4' : 'webm';
-                link.download = `video-${Date.now()}.${extension}`;
+                link.download = `video-${Date.now()}.webm`;
                 
                 link.click();
                 URL.revokeObjectURL(url);
                 
-                utils.showStatus('Видео успешно экспортировано');
+                utils.showStatus('Видео с аудио успешно экспортировано');
                 resolve();
             } catch (error) {
                 utils.showError('Ошибка экспорта: ' + error.message);
