@@ -4,6 +4,7 @@ export class TextOverlay extends VideoProcessor {
     constructor(dependencies) {
         super(dependencies);
         this.textElement = dependencies.textElement;
+        this.currentParams = null; // Store last applied parameters
         if (!this.textElement) {
             this.logError('Text overlay element not found');
             return;
@@ -15,6 +16,7 @@ export class TextOverlay extends VideoProcessor {
             this.logError('Text overlay not initialized');
             return;
         }
+        this.currentParams = { ...params }; // Store a copy of the parameters
 
         const { text, position, color, size } = params;
         if (!text) {
@@ -228,10 +230,10 @@ export class TextOverlay extends VideoProcessor {
 
     applyPosition(position) {
         const positions = {
-            'top-left': { top: '5%', left: '5%', right: 'auto', bottom: 'auto' },
-            'top-right': { top: '5%', right: '5%', left: 'auto', bottom: 'auto' },
-            'bottom-left': { bottom: '5%', left: '5%', right: 'auto', top: 'auto' },
-            'bottom-right': { bottom: '5%', right: '5%', left: 'auto', top: 'auto' }
+            'top-left': { top: '5%', left: '5%', right: 'auto', bottom: 'auto', transform: 'translate(0, 0)' },
+            'top-right': { top: '5%', right: '5%', left: 'auto', bottom: 'auto', transform: 'translate(0, 0)' },
+            'bottom-left': { bottom: '5%', left: '5%', right: 'auto', top: 'auto', transform: 'translate(0, 0)' },
+            'bottom-right': { bottom: '5%', right: '5%', left: 'auto', top: 'auto', transform: 'translate(0, 0)' }
         };
 
         const pos = positions[position] || positions['top-left'];

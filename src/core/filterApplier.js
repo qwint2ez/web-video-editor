@@ -46,43 +46,9 @@ export class FilterApplier extends VideoProcessor {
             return;
         }
         
-        // For CSS filters like 'grayscale(100%)', applying them directly to canvas
-        // requires manual pixel manipulation for most filters.
-        // HTML5 Canvas filter property is simpler if available and sufficient.
-        if (ctx.filter !== undefined) {
-            // Modern browsers support ctx.filter
-            try {
-                ctx.filter = this.cssFilters[this.currentFilter];
-                // Draw the image again to apply the filter, or if image is already there, this might not be needed
-                // depending on how canvas updates.
-                // A common pattern is: save state, set filter, draw, restore state.
-                // However, if we are just setting a persistent filter on the context for subsequent draws:
-                // This is fine. The caller of applyFilterToCanvas will draw the video frame.
-                // For this to work, applyFilterToCanvas should be called *before* ctx.drawImage in the export loop.
-                // The current export loop draws, then calls this. This means we need to re-process.
-
-                // To apply filter to already drawn content:
-                // 1. Get image data
-                // 2. Apply filter manually (complex) OR
-                // 3. Draw to an offscreen canvas with filter, then draw back (simpler for CSS-like filters)
-
-                // Simplest approach if ctx.filter is supported and we want to apply to current canvas content:
-                // This is tricky because ctx.filter applies to *future* drawing operations.
-                // To filter existing content, you'd typically draw the canvas to itself or an intermediate canvas.
-
-                // Let's stick to manual pixel manipulation for broader compatibility and direct effect.
-                // The following is a placeholder for actual pixel manipulation if ctx.filter is not used or not sufficient.
-                // console.log(`Applying filter ${this.currentFilter} to canvas using ctx.filter if available.`);
-            } catch (e) {
-                console.warn(`ctx.filter property not fully supported or error applying: ${e.message}. Falling back to manual if implemented.`);
-                // Fallback to manual pixel manipulation if ctx.filter fails or is not what we want.
-                this.applyManualFilter(ctx, canvas, this.currentFilter);
-            }
-        } else {
-            // Fallback for older browsers or if specific pixel manipulation is needed
-            console.warn('ctx.filter is not supported. Falling back to manual filter application.');
-            this.applyManualFilter(ctx, canvas, this.currentFilter);
-        }
+        // Consistently use manual filter application for predictable results post-drawImage in exporter.
+        // This modifies the pixels of the image already drawn onto the canvas.
+        this.applyManualFilter(ctx, canvas, this.currentFilter);
     }
 
     applyManualFilter(ctx, canvas, filterName) {

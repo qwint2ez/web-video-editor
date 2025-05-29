@@ -6,6 +6,7 @@ import { VideoMerger } from './videoMerger.js';
 import { VideoTrimmer } from './videoTrimmer.js';
 import { VideoExporter } from './videoExporter.js';
 import { TimelineUIManager } from './timelineUIManager.js';
+import { ProjectSerializer } from './projectSerializer.js'; // Added
 // MediaInfo is used internally by VideoMerger now
 
 export class VideoEditor {
@@ -16,6 +17,8 @@ export class VideoEditor {
         
         this.dependencies = dependencies;
         this.processors = {};
+        this.projectSerializer = new ProjectSerializer(); // Added
+        this._projectDefinitionForLoad = null; // Added: To store parsed project data during load
         this.initializeDependencies();
     }
 
@@ -119,26 +122,61 @@ export class VideoEditor {
         }
 
         const videoFileToTrim = this.processors.merger.videos[videoIndex];
-        // const originalDuration = this.processors.merger.durations[videoIndex]; // Use this for validation if needed
+        
+        let originalFileNameForTrim;
+        let effectiveStartTime;
+        let effectiveEndTime;
 
-        // Use the advanced trimVideoSegmentLowLatency for better results with audio
+        if (videoFileToTrim._isTrimmedMarker && videoFileToTrim._originalFileName && videoFileToTrim._trimRange) {
+            originalFileNameForTrim = videoFileToTrim._originalFileName;
+            // startTime and endTime are relative to the current state of videoFileToTrim
+            effectiveStartTime = videoFileToTrim._trimRange.start + startTime;
+            effectiveEndTime = videoFileToTrim._trimRange.start + endTime; // Assuming endTime is relative to startTime of this trim op on the current blob
+                                                                      // If endTime is absolute within videoFileToTrim, then it's videoFileToTrim._trimRange.start + endTime
+                                                                      // Let's assume endTime is an offset from the start of the current blob segment.
+                                                                      // No, standard interpretation: startTime and endTime are new start/end for *this current segment*.
+                                                                      // So, if segment was 0-10 (from original 5-15), and we trim 2-8 (of this 0-10 segment),
+                                                                      // it becomes original 5+2 to 5+8 = 7 to 13.
+                                                                      // The parameters startTime, endTime are relative to the start of videoFileToTrim.
+            // Corrected logic: startTime and endTime are new boundaries *within* the current videoFileToTrim.
+            // The trimVideoSegmentLowLatency expects startTime and endTime relative to the blob it receives.
+            // So, the effectiveStartTime and effectiveEndTime for metadata should be calculated based on previous _trimRange.start
+             effectiveStartTime = (videoFileToTrim._trimRange?.start || 0) + startTime;
+             effectiveEndTime = (videoFileToTrim._trimRange?.start || 0) + endTime;
+
+
+        } else {
+            originalFileNameForTrim = videoFileToTrim.name;
+            effectiveStartTime = startTime;
+            effectiveEndTime = endTime;
+        }
+        
+        // Ensure endTime is not less than startTime for the operation itself
+        if (endTime <= startTime) {
+            throw new Error(`Trim end time (${endTime.toFixed(2)}s) must be after start time (${startTime.toFixed(2)}s) for the current segment.`);
+        }
+
+
         const trimmedBlob = await this.processors.trimmer.trimVideoSegmentLowLatency(videoFileToTrim, startTime, endTime);
         
         if (trimmedBlob && trimmedBlob.size > 0) {
-            this.processors.merger.videos[videoIndex] = trimmedBlob;
-            // The duration of the trimmedBlob should ideally be known or re-calculated.
-            // For now, _knownDuration is set by trimVideoSegmentLowLatency.
-            // Then, reload media durations in merger.
-            await this.processors.merger.loadMediaDurations(); // This will update durations and totalDuration
+            // Attach metadata for serialization
+            trimmedBlob._originalFileName = originalFileNameForTrim;
+            trimmedBlob._trimRange = { start: effectiveStartTime, end: effectiveEndTime };
+            trimmedBlob._isTrimmedMarker = true;
+            // Generate a more descriptive name for the blob in the timeline
+            trimmedBlob.name = `trimmed_${effectiveStartTime.toFixed(1)}-${effectiveEndTime.toFixed(1)}_${originalFileNameForTrim.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
             
-            // If current video was trimmed, reload it. Otherwise, just update UI.
+            this.processors.merger.videos[videoIndex] = trimmedBlob;
+            await this.processors.merger.loadMediaDurations(); 
+            
             if (this.processors.merger.currentIndex === videoIndex) {
                 await this.processors.merger.loadVideo(videoIndex);
             }
             
             this.processors.timelineUIManager.updateTimelineSegments();
             this.processors.timelineUIManager.updateTimeDisplay();
-            this.dependencies.debugElement.textContent = `Status: Video ${videoIndex + 1} trimmed.`;
+            this.dependencies.debugElement.textContent = `Status: Video ${videoIndex + 1} trimmed. Original: ${originalFileNameForTrim}`;
         } else {
             this.dependencies.debugElement.textContent = `Status: Trimming video ${videoIndex + 1} resulted in empty file.`;
         }
@@ -168,5 +206,165 @@ export class VideoEditor {
 
     formatTime(seconds) {
         return this.processors.merger ? this.processors.merger.formatTime(seconds) : "00:00";
+    }
+
+    // --- Project Serialization/Deserialization ---
+
+    async saveProject() {
+        if (!this.processors.merger) {
+            throw new Error("Video merger not initialized. Cannot save project.");
+        }
+
+        const projectVideos = this.processors.merger.videos.map(video => {
+            if (video._isTrimmedMarker && video._originalFileName && video._trimRange) {
+                return {
+                    originalFileName: video._originalFileName,
+                    timelineDisplayName: video.name, // The name of the blob itself
+                    isTrimmed: true,
+                    trimStart: video._trimRange.start,
+                    trimEnd: video._trimRange.end,
+                };
+            }
+            return {
+                originalFileName: video.name, // Assumes it's an original File object
+                timelineDisplayName: video.name,
+                isTrimmed: false,
+            };
+        });
+
+        const projectAudio = this.processors.merger.audioFile ? {
+            originalFileName: this.processors.merger.audioFile.name,
+            timelineDisplayName: this.processors.merger.audioFile.name,
+        } : null;
+
+        const projectFilter = this.processors.filter.currentFilter ? {
+            name: this.processors.filter.currentFilter,
+        } : null;
+
+        const projectText = this.processors.text.currentParams ? {
+            ...this.processors.text.currentParams
+        } : null;
+
+        const projectState = {
+            version: "1.0", // For future compatibility
+            videos: projectVideos,
+            audio: projectAudio,
+            filter: projectFilter,
+            text: projectText,
+            // Note: Volume, current playback time are not saved. Focus is on edit decisions.
+        };
+
+        return this.projectSerializer.serialize(projectState);
+    }
+
+    async prepareLoadProject(jsonString) {
+        try {
+            const projectDefinition = this.projectSerializer.deserialize(jsonString);
+            if (!projectDefinition) {
+                throw new Error("Failed to parse project data.");
+            }
+            this._projectDefinitionForLoad = projectDefinition; // Store for finalizeLoadProject
+
+            const requiredVideoFiles = projectDefinition.videos.map(v => v.originalFileName);
+            const requiredAudioFiles = projectDefinition.audio ? [projectDefinition.audio.originalFileName] : [];
+            
+            // Deduplicate file names
+            const allRequiredFiles = [...new Set([...requiredVideoFiles, ...requiredAudioFiles])];
+
+            return {
+                files: allRequiredFiles,
+                // You could also return a summary of the project here if needed by the UI
+            };
+        } catch (error) {
+            this._projectDefinitionForLoad = null;
+            console.error("Error preparing project load:", error);
+            throw error; // Re-throw for UI to handle
+        }
+    }
+
+    async finalizeLoadProject(fileMap) {
+        if (!this._projectDefinitionForLoad) {
+            throw new Error("No project definition loaded. Call prepareLoadProject first.");
+        }
+        const projectDef = this._projectDefinitionForLoad;
+
+        try {
+            this.dependencies.debugElement.textContent = "Status: Loading project...";
+            // 1. Clear current state (soft clear, merger will handle full clear)
+            this.processors.filter.process({ filter: '' });
+            if (this.processors.text.textElement) this.processors.text.textElement.innerHTML = '';
+            this.processors.text.currentParams = null;
+            // Merger will be cleared when new videos are loaded.
+
+            // 2. Reconstruct video array
+            const loadedVideos = [];
+            for (const videoData of projectDef.videos) {
+                const originalFile = fileMap[videoData.originalFileName];
+                if (!originalFile) {
+                    throw new Error(`Required original file "${videoData.originalFileName}" not provided.`);
+                }
+
+                if (videoData.isTrimmed && videoData.trimStart != null && videoData.trimEnd != null) {
+                    // Trim the original file to the specified range
+                    const trimmedBlob = await this.processors.trimmer.trimVideoSegmentLowLatency(
+                        originalFile,
+                        videoData.trimStart,
+                        videoData.trimEnd
+                    );
+                    if (!trimmedBlob || trimmedBlob.size === 0) {
+                        throw new Error(`Failed to re-trim file "${videoData.originalFileName}".`);
+                    }
+                    trimmedBlob._originalFileName = videoData.originalFileName;
+                    trimmedBlob._trimRange = { start: videoData.trimStart, end: videoData.trimEnd };
+                    trimmedBlob._isTrimmedMarker = true;
+                    trimmedBlob.name = videoData.timelineDisplayName || `trimmed_${videoData.trimStart.toFixed(1)}-${videoData.trimEnd.toFixed(1)}_${videoData.originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+                    loadedVideos.push(trimmedBlob);
+                } else {
+                    // Use the original file as is
+                    // Ensure it has a 'name' property if it's a blob from a previous session that wasn't an original file
+                    if (!originalFile.name && videoData.originalFileName) {
+                        originalFile.name = videoData.originalFileName;
+                    }
+                    loadedVideos.push(originalFile);
+                }
+            }
+
+            // 3. Reconstruct audio file
+            let loadedAudioFile = null;
+            if (projectDef.audio && projectDef.audio.originalFileName) {
+                loadedAudioFile = fileMap[projectDef.audio.originalFileName];
+                if (!loadedAudioFile) {
+                    throw new Error(`Required original audio file "${projectDef.audio.originalFileName}" not provided.`);
+                }
+                 if (!loadedAudioFile.name && projectDef.audio.originalFileName) {
+                        loadedAudioFile.name = projectDef.audio.originalFileName;
+                    }
+            }
+
+            // 4. Load media into merger
+            await this.processors.merger.process({
+                videoFiles: loadedVideos,
+                audioFile: loadedAudioFile,
+            });
+            // TimelineUIManager updates are called within merger.process
+
+            // 5. Apply filter
+            if (projectDef.filter && projectDef.filter.name) {
+                this.processors.filter.process({ filter: projectDef.filter.name });
+            }
+
+            // 6. Apply text
+            if (projectDef.text) {
+                this.processors.text.process(projectDef.text);
+            }
+
+            this.dependencies.debugElement.textContent = "Status: Project loaded successfully.";
+        } catch (error) {
+            console.error("Error finalizing project load:", error);
+            this.dependencies.debugElement.textContent = `Status: Error loading project - ${error.message}`;
+            // Optionally, try to revert to a clean state or previous state if possible
+        } finally {
+            this._projectDefinitionForLoad = null; // Clear stored definition
+        }
     }
 }

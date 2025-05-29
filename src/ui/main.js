@@ -26,6 +26,11 @@ const elements = {
     endInput: document.getElementById('end'),
     addToTimelineBtn: document.getElementById('addToTimelineBtn'),
     
+    // Project Save/Load Buttons
+    saveProjectBtn: document.getElementById('saveProjectBtn'),
+    loadProjectInput: document.getElementById('loadProjectInput'), // File input for .json
+    confirmLoadedFilesBtn: document.getElementById('confirmLoadedFilesBtn'), // Button to confirm files for project load
+
     // Контейнеры
     uploadedMediaSection: document.getElementById('uploadedVideosSection'), // Ensure this ID matches HTML
     uploadedMediaList: document.getElementById('uploadedMediaList'),     // Ensure this ID matches HTML
@@ -259,18 +264,148 @@ function updateTotalDurationDisplay() {
     }
 }
 
+// --- Project Save/Load Logic ---
+async function handleSaveProject() {
+    if (!state.videoEditor) {
+        utils.showError("Editor not initialized.");
+        return;
+    }
+    try {
+        utils.showStatus("Saving project...");
+        const projectJson = await state.videoEditor.saveProject();
+        const blob = new Blob([projectJson], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `video_project_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        utils.showStatus("Project saved successfully.");
+    } catch (error) {
+        utils.showError("Failed to save project: " + error.message);
+        console.error("Save project error:", error);
+    }
+}
+
+let requiredFilesForLoad = null;
+
+async function handleLoadProjectFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!state.videoEditor) {
+        utils.showError("Editor not initialized.");
+        return;
+    }
+    // Reset file input to allow loading the same file again if needed
+    event.target.value = null; 
+
+    try {
+        utils.showStatus("Reading project file...");
+        const jsonContent = await file.text();
+        const prepResult = await state.videoEditor.prepareLoadProject(jsonContent);
+        
+        if (prepResult && prepResult.files && prepResult.files.length > 0) {
+            requiredFilesForLoad = prepResult.files;
+            utils.showStatus(`Project requires files: ${requiredFilesForLoad.join(', ')}. Please upload ALL listed files using the 'Upload Video/Audio' input, then click 'Confirm Files for Project'.`);
+            utils.showElement(elements.confirmLoadedFilesBtn);
+            utils.showElement(elements.videoInput); // Ensure video input is visible
+             // Clear current uploaded media list in UI to avoid confusion, user needs to re-select
+            state.uploadedMedia = [];
+            renderUploadedMediaList();
+        } else if (prepResult && (!prepResult.files || prepResult.files.length === 0)) {
+            // Project has no external file dependencies (e.g. empty project, or only text/filter)
+            requiredFilesForLoad = []; // or null
+            await state.videoEditor.finalizeLoadProject({}); // Pass empty fileMap
+            utils.showStatus("Project loaded (no external files needed or found).");
+            utils.hideElement(elements.confirmLoadedFilesBtn);
+        } else {
+             utils.showError("Project file processed, but no files listed as required. Finalize if this is correct or check project file.");
+        }
+
+    } catch (error) {
+        utils.showError("Failed to load project: " + error.message);
+        console.error("Load project error:", error);
+        requiredFilesForLoad = null;
+        utils.hideElement(elements.confirmLoadedFilesBtn);
+    }
+}
+
+async function handleConfirmLoadedFiles() {
+    if (!requiredFilesForLoad) {
+        utils.showError("No project prepared for loading files.");
+        return;
+    }
+    if (!state.videoEditor) {
+        utils.showError("Editor not initialized.");
+        return;
+    }
+
+    utils.showStatus("Verifying files for project...");
+    const fileMap = {};
+    let allFilesFound = true;
+
+    for (const requiredName of requiredFilesForLoad) {
+        const foundMedia = state.uploadedMedia.find(m => m.name === requiredName);
+        if (foundMedia) {
+            fileMap[requiredName] = foundMedia.file;
+        } else {
+            allFilesFound = false;
+            utils.showError(`Missing required file: ${requiredName}. Please upload it and try again.`);
+            console.warn(`Missing required file for project load: ${requiredName}`);
+            break; 
+        }
+    }
+
+    if (allFilesFound) {
+        try {
+            await state.videoEditor.finalizeLoadProject(fileMap);
+            // Success message is handled by finalizeLoadProject
+        } catch (error) {
+            // Error message is handled by finalizeLoadProject or caught here
+            utils.showError("Error during project finalization: " + error.message);
+            console.error("Finalize project load error:", error);
+        }
+    } else {
+        if (requiredFilesForLoad.length > 0 && Object.keys(fileMap).length < requiredFilesForLoad.length) {
+             utils.showError("Not all required files were provided or matched. Please check uploads and names.");
+        }
+    }
+    
+    // Clean up after attempt
+    requiredFilesForLoad = null;
+    utils.hideElement(elements.confirmLoadedFilesBtn);
+    // Optionally, clear state.uploadedMedia again or leave it for user to manage
+    // state.uploadedMedia = [];
+    // renderUploadedMediaList();
+}
+
+
 // Инициализация
 function initializeApp() {
     try {
+        // Clear existing src from video element to prevent issues with old blob URLs on reload
+        if (elements.videoElement) {
+            elements.videoElement.src = '';
+        }
+
         state.videoEditor = new VideoEditor(elements);
         
         // Скрываем элементы управления изначально
         utils.hideElement(elements.editorContainer);
         utils.hideElement(elements.uploadedMediaSection);
+        utils.hideElement(elements.confirmLoadedFilesBtn); // Hide confirm button initially
 
         // Добавляем обработчики событий
         elements.videoInput?.addEventListener('change', handleVideoUpload);
         elements.addToTimelineBtn?.addEventListener('click', handleAddToTimeline);
+        
+        // Project Save/Load handlers
+        elements.saveProjectBtn?.addEventListener('click', handleSaveProject);
+        elements.loadProjectInput?.addEventListener('change', handleLoadProjectFile);
+        elements.confirmLoadedFilesBtn?.addEventListener('click', handleConfirmLoadedFiles);
         
         initializePlayerControls();
         
@@ -396,7 +531,8 @@ function formatDuration(seconds) {
 
 // Обновляем обработчик текста
 document.getElementById('applyTextBtn').addEventListener('click', () => {
-    const text = document.getElementById('textInput').value;
+    const textInput = document.getElementById('textInput');
+    const text = textInput ? textInput.value : '';
     const position = document.getElementById('textPosition').value;
     const color = document.getElementById('textColor').value;
     const size = document.getElementById('textSize').value;
@@ -409,7 +545,8 @@ document.getElementById('applyTextBtn').addEventListener('click', () => {
 
 // Обновляем обработчик фильтров
 document.getElementById('applyFilterBtn').addEventListener('click', () => {
-    const filter = document.getElementById('filterSelect').value;
+    const filterSelect = document.getElementById('filterSelect');
+    const filter = filterSelect ? filterSelect.value : '';
     try {
         state.videoEditor.applyFilter(filter);
     } catch (error) {

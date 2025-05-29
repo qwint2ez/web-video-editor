@@ -128,6 +128,7 @@ export class VideoExporter {
                 const segmentPlayer = document.createElement('video');
                 const segmentSrcUrl = URL.createObjectURL(videoFile);
                 segmentPlayer.src = segmentSrcUrl;
+                segmentPlayer.muted = true; // Mute element, audio captured via Web Audio API if needed
 
                 await new Promise((resolve, reject) => {
                     segmentPlayer.onloadedmetadata = resolve;
@@ -145,32 +146,57 @@ export class VideoExporter {
                         segmentPlayer.muted = true;
                     }
                 } else {
-                    segmentPlayer.muted = true;
+                    segmentPlayer.muted = true; // Ensure it's muted if not including its audio directly
                 }
 
-                await segmentPlayer.play().catch(e => console.warn(`Segment ${i + 1} play error: ${e.name} - ${e.message}`));
+                // This is the new loop structure for processing each segment
+                await new Promise(async (resolveSegmentProcessing) => {
+                    await segmentPlayer.play().catch(e => console.warn(`Segment ${i + 1} play error: ${e.name} - ${e.message}`));
+                    
+                    let segmentRenderStartTime = performance.now();
+                    let framesRenderedForSegment = 0; // Counts frames *sent to MediaRecorder*
+                    const targetFps = 30;
+                    const targetFrameDurationMs = 1000 / targetFps;
 
-                let RENDER_FRAMES_FOR_SEGMENT_DURATION = 0;
-                const frameDurationMs = 1000 / 30;
+                    const renderExporterFrame = () => {
+                        const elapsedRealTimeMs = performance.now() - segmentRenderStartTime;
+                        // This is the time in the *output* video we are trying to render
+                        const currentOutputTimeMs = framesRenderedForSegment * targetFrameDurationMs;
 
-                while (RENDER_FRAMES_FOR_SEGMENT_DURATION < segmentDuration * 1000 && !segmentPlayer.ended) {
-                    if (segmentPlayer.videoWidth > 0 && segmentPlayer.videoHeight > 0) {
-                        ctx.drawImage(segmentPlayer, 0, 0, canvas.width, canvas.height);
-                    }
-                    if (this.processors?.filter?.applyFilterToCanvas) {
-                        this.processors.filter.applyFilterToCanvas(ctx, canvas);
-                    }
-                    if (this.processors?.text?.drawTextOnCanvas) {
-                        this.processors.text.drawTextOnCanvas(ctx, canvas);
-                    }
-                    await new Promise(r => setTimeout(r, frameDurationMs));
-                    RENDER_FRAMES_FOR_SEGMENT_DURATION += frameDurationMs;
-                }
+                        if (currentOutputTimeMs >= segmentDuration * 1000 || segmentPlayer.ended) {
+                            segmentPlayer.pause();
+                            if (segmentAudioSourceNode) segmentAudioSourceNode.disconnect();
+                            URL.revokeObjectURL(segmentSrcUrl);
+                            segmentPlayer.remove();
+                            resolveSegmentProcessing();
+                            return;
+                        }
 
-                segmentPlayer.pause();
-                if (segmentAudioSourceNode) segmentAudioSourceNode.disconnect();
-                URL.revokeObjectURL(segmentSrcUrl);
-                segmentPlayer.remove();
+                        if (segmentPlayer.videoWidth > 0 && segmentPlayer.videoHeight > 0) {
+                            ctx.drawImage(segmentPlayer, 0, 0, canvas.width, canvas.height);
+                        } else {
+                            ctx.fillStyle = 'black';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        }
+
+                        // Apply effects AFTER drawing the current frame from segmentPlayer
+                        if (this.processors?.filter?.applyFilterToCanvas) {
+                            this.processors.filter.applyFilterToCanvas(ctx, canvas);
+                        }
+                        if (this.processors?.text?.drawTextOnCanvas) {
+                            this.processors.text.drawTextOnCanvas(ctx, canvas);
+                        }
+                        
+                        framesRenderedForSegment++;
+                        const progressPercent = Math.min(100, (currentOutputTimeMs / (segmentDuration * 1000)) * 100);
+                        if (this.debugElement) this.debugElement.textContent = `Status: Processing segment ${i + 1}/${videos.length} (${progressPercent.toFixed(0)}%)...`;
+
+                        const nextFrameTargetRealTime = segmentRenderStartTime + (framesRenderedForSegment * targetFrameDurationMs);
+                        const delayForNextFrame = Math.max(0, nextFrameTargetRealTime - performance.now());
+                        setTimeout(renderExporterFrame, delayForNextFrame);
+                    }
+                    renderExporterFrame(); // Start the loop for this segment
+                }); // End of segment processing promise
             }
 
             if (overlayAudioElement) {
