@@ -43,17 +43,16 @@ const elements = {
 function initializePlayerControls() {
     if (elements.playPauseBtn) {
         elements.playPauseBtn.addEventListener('click', () => {
-            const merger = state.videoEditor?.processors?.merger;
-            if (merger) {
-                merger.togglePlay();
-            }
+            // VideoEditor now has a togglePlay method that delegates to merger
+            state.videoEditor?.processors?.merger?.togglePlay();
         });
     }
 
     if (elements.downloadBtn) {
         elements.downloadBtn.addEventListener('click', async () => {
             try {
-                await showExportDialog();
+                // showExportDialog now calls state.videoEditor.exportMedia
+                await showExportDialog(); 
             } catch (error) {
                 utils.showError('Download error: ' + error.message);
                 console.error(error);
@@ -222,10 +221,8 @@ async function handleAddToTimeline() {
     utils.showStatus('Loading media...');
     try {
         const videos = selectedMediaFiles.filter(m => m.type === 'video').map(m => m.file);
-        const audioFile = selectedMediaFiles.find(m => m.type === 'audio')?.file; // Corrected variable name
+        const audioFile = selectedMediaFiles.find(m => m.type === 'audio')?.file;
 
-        // Show editor elements if any media is being added or already exists
-        // or if there's media currently on the timeline (even if nothing new is selected for adding)
         const merger = state.videoEditor?.processors?.merger;
         if (videos.length > 0 || audioFile || (merger && (merger.videos?.length > 0 || merger.audioFile)) ) {
              [
@@ -233,11 +230,10 @@ async function handleAddToTimeline() {
                 elements.videoContainer,
                 elements.timelineContainer,
             ].forEach(el => el && utils.showElement(el));
-        } else { // This case means nothing new selected AND timeline is already empty
+        } else { 
             utils.hideElement(elements.editorContainer);
         }
         
-        // Pass audioFile correctly
         await state.videoEditor.loadVideos(videos, audioFile); 
 
         updateTotalDurationDisplay(); 
@@ -245,9 +241,6 @@ async function handleAddToTimeline() {
         if (videos.length > 0 || audioFile) {
             utils.showStatus('Media loaded successfully');
         } else {
-            // This message might be confusing if the timeline was already empty and nothing was selected.
-            // The merger.process will handle "Timeline cleared" if appropriate.
-            // Let's rely on merger's status or provide a more generic one.
             utils.showStatus('Timeline updated.');
         }
 
@@ -259,8 +252,8 @@ async function handleAddToTimeline() {
 
 function updateTotalDurationDisplay() {
     const merger = state.videoEditor?.processors?.merger;
-    if (merger && elements.duration) { // Check if elements.duration exists
-        elements.duration.textContent = merger.formatTime(merger.totalDuration);
+    if (merger && elements.duration) {
+        elements.duration.textContent = state.videoEditor.formatTime(merger.totalDuration); // Use VideoEditor's formatTime
     } else if (elements.duration) {
         elements.duration.textContent = "00:00";
     }
@@ -311,59 +304,39 @@ document.getElementById('applyTrimBtn')?.addEventListener('click', async () => {
     try {
         const merger = state.videoEditor?.processors?.merger;
 
-        if (!merger) {
-            throw new Error('Видеоредактор не инициализирован');
-        }
-
-        if (!merger.videos || merger.videos.length === 0) {
-            throw new Error('Сначала загрузите видео для обрезки');
-        }
+        if (!merger) throw new Error('Видеоредактор не инициализирован');
+        if (!merger.videos || merger.videos.length === 0) throw new Error('Сначала загрузите видео для обрезки');
 
         const startTimeInput = parseFloat(elements.startInput.value);
         const endTimeInput = parseFloat(elements.endInput.value);
 
-        if (merger.videos.length === 1) {
-            // Single video case
-            const singleVideoDuration = merger.durations[0];
-            if (!Number.isFinite(singleVideoDuration) || singleVideoDuration <= 0) {
-                throw new Error('Невозможно определить длительность видео');
-            }
-
-            const start = Number.isFinite(startTimeInput) ? startTimeInput : 0;
-            const end = Number.isFinite(endTimeInput) && endTimeInput > 0 ? endTimeInput : singleVideoDuration;
-
-            if (start < 0 || end > singleVideoDuration || start >= end) {
-                throw new Error(`Время для обрезки единственного видео должно быть между 0 и ${singleVideoDuration.toFixed(1)}с. Start: ${start}, End: ${end}`);
-            }
-            
-            if (confirm(`Обрезать видео с ${start.toFixed(2)}с до ${end.toFixed(2)}с? (Относительно этого видео)`)) {
-                await merger.trimSingleVideo(0, start, end);
-                utils.showStatus('Видео успешно обрезано');
-            }
-        } else if (merger.videos.length > 1) {
-            // Multiple videos case
-            const selectedIndex = await showVideoSelectionDialog(merger.videos);
-            if (selectedIndex === null) return;
-
-            const videoToTrimDuration = merger.durations[selectedIndex];
-            if (!Number.isFinite(videoToTrimDuration) || videoToTrimDuration <= 0) {
-                throw new Error(`Невозможно определить длительность видео ${selectedIndex + 1}`);
-            }
-
-            const start = Number.isFinite(startTimeInput) ? startTimeInput : 0;
-            const end = Number.isFinite(endTimeInput) && endTimeInput > 0 ? endTimeInput : videoToTrimDuration;
-            
-            if (start < 0 || end > videoToTrimDuration || start >= end) {
-                throw new Error(`Время для обрезки видео ${selectedIndex + 1} должно быть между 0 и ${videoToTrimDuration.toFixed(1)}с. Start: ${start}, End: ${end}`);
-            }
-            
-            if (confirm(`Обрезать видео ${selectedIndex + 1} с ${start.toFixed(2)}с до ${end.toFixed(2)}с?`)) {
-                await merger.trimSingleVideo(selectedIndex, start, end);
-                utils.showStatus(`Видео ${selectedIndex + 1} успешно обрезано`);
-            }
+        let videoIndexToTrim = 0;
+        if (merger.videos.length > 1) {
+            const selectedIndex = await showVideoSelectionDialog(merger.videos, merger.durations); // Pass durations
+            if (selectedIndex === null) return; // User cancelled
+            videoIndexToTrim = selectedIndex;
         }
         
-        updateTotalDurationDisplay();
+        const videoToTrimDuration = merger.durations[videoIndexToTrim];
+        if (!Number.isFinite(videoToTrimDuration) || videoToTrimDuration <= 0) {
+            throw new Error(`Невозможно определить длительность видео ${videoIndexToTrim + 1}`);
+        }
+
+        const start = Number.isFinite(startTimeInput) ? startTimeInput : 0;
+        // If endTimeInput is 0 or not a number, use the full duration of the segment
+        const end = Number.isFinite(endTimeInput) && endTimeInput > start ? endTimeInput : videoToTrimDuration;
+
+
+        if (start < 0 || end > videoToTrimDuration || start >= end) {
+            throw new Error(`Время для обрезки видео ${videoIndexToTrim + 1} (длит: ${videoToTrimDuration.toFixed(1)}с) некорректно. Start: ${start}, End: ${end}`);
+        }
+        
+        if (confirm(`Обрезать видео ${videoIndexToTrim + 1} с ${start.toFixed(2)}с до ${end.toFixed(2)}с?`)) {
+            // Call the new method in VideoEditor
+            await state.videoEditor.trimSingleVideo(videoIndexToTrim, start, end);
+            // updateTotalDurationDisplay is called inside trimSingleVideo via loadMediaDurations and UI updates
+        }
+        
     } catch (error) {
         utils.showError(error.message);
         console.error(error);
@@ -371,28 +344,24 @@ document.getElementById('applyTrimBtn')?.addEventListener('click', async () => {
 });
 
 // Обновленная функция диалога выбора видео
-function showVideoSelectionDialog(videos) {
+function showVideoSelectionDialog(videos, durations) { // Added durations parameter
     return new Promise((resolve) => {
         const dialog = document.createElement('div');
         dialog.className = 'video-selection-dialog';
         
-        const merger = state.videoEditor?.processors?.merger;
-        const videoDurations = videos.map((_, idx) => {
-            const duration = merger?.durations[idx];
-            return duration ? formatDuration(duration) : '0:00';
-        });
+        const videoDurationsFormatted = durations.map(d => formatDuration(d)); // Use existing formatDuration
         
         dialog.innerHTML = `
             <div class="dialog-content">
                 <h3>Выберите видео для обрезки</h3>
                 <div class="video-list">
-                    ${videos.map((_, idx) => `
+                    ${videos.map((video, idx) => `
                         <div class="video-item">
                             <button class="video-select-btn" data-index="${idx}">
-                                Видео ${idx + 1}
+                                Видео ${idx + 1} (${video.name ? video.name.substring(0,15)+'...' : 'Blob'})
                             </button>
                             <span class="video-duration">
-                                (${videoDurations[idx]})
+                                (${videoDurationsFormatted[idx]})
                             </span>
                         </div>
                     `).join('')}
@@ -460,7 +429,7 @@ if (applyAudioBtnContainer && applyAudioBtnContainer.querySelector('h3')?.textCo
 
 // Обновленная функция диалога экспорта с поддержкой MP4
 function showExportDialog() {
-    return new Promise((resolve) => {
+    return new Promise((resolvePromise) => { // Renamed resolve to avoid conflict
         const dialog = document.createElement('div');
         dialog.className = 'export-dialog';
         
@@ -538,13 +507,9 @@ function showExportDialog() {
             
             try {
                 utils.showStatus(`Экспорт видео в формате ${format.toUpperCase()}...`);
-                const merger = state.videoEditor?.processors?.merger;
                 
-                if (!merger || !merger.videos || merger.videos.length === 0) {
-                    throw new Error('No videos to download');
-                }
-
-                const videoBlob = await merger.exportVideo({
+                // Call VideoEditor's exportMedia method
+                const videoBlob = await state.videoEditor.exportMedia({
                     format,
                     includeOriginalAudio,
                     includeOverlayAudio,
@@ -567,18 +532,18 @@ function showExportDialog() {
                 URL.revokeObjectURL(url);
                 
                 utils.showStatus(`Видео успешно экспортировано в ${format.toUpperCase()}`);
-                resolve();
+                resolvePromise(); // Use renamed resolve
             } catch (error) {
                 utils.showError('Ошибка экспорта: ' + error.message);
                 console.error(error);
-                resolve();
+                resolvePromise(); // Use renamed resolve
             }
         };
 
         dialog.querySelector('#startExportBtn').addEventListener('click', startExport);
         dialog.querySelector('#cancelExportBtn').addEventListener('click', () => {
             dialog.remove();
-            resolve();
+            resolvePromise(); // Use renamed resolve
         });
 
         document.body.appendChild(dialog);

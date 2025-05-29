@@ -1,64 +1,69 @@
 import { AudioOverlay } from './audioOverlay.js';
-import { FilterApplier } from './filterApplier.js';
+import { FilterApplier } from './filterApplier.js'; // Assuming FilterApplier is correct, not FilterProcessor
 import { TextOverlay } from './textOverlay.js';
 import { VideoLoader } from './videoLoader.js';
 import { VideoMerger } from './videoMerger.js';
 import { VideoTrimmer } from './videoTrimmer.js';
-import { TimelineManager } from './timelineManager.js';
+import { VideoExporter } from './videoExporter.js';
+import { TimelineUIManager } from './timelineUIManager.js';
+// MediaInfo is used internally by VideoMerger now
 
 export class VideoEditor {
     constructor(dependencies) {
-        if (!dependencies.videoElement || !dependencies.debugElement) {
-            throw new Error('Required dependencies are missing');
+        if (!dependencies.videoElement || !dependencies.debugElement || !dependencies.timelineBar) {
+            throw new Error('Required dependencies are missing for VideoEditor');
         }
         
         this.dependencies = dependencies;
-        this.processors = {}; // Initialize processors object
+        this.processors = {};
         this.initializeDependencies();
     }
 
     initializeDependencies() {
         try {
-            // Instantiate all processors first
-            const loader = new VideoLoader(this.dependencies);
-            const audio = new AudioOverlay(this.dependencies);
-            const filter = new FilterApplier(this.dependencies);
-            const text = new TextOverlay({
-                ...this.dependencies,
-                textElement: this.dependencies.textElement || this.createTextOverlay()
-            });
-            const merger = new VideoMerger(this.dependencies);
-            const trimmer = new VideoTrimmer(this.dependencies);
+            const textOverlayElement = this.dependencies.textElement || this.createTextOverlay();
 
-            // Assign them to this.processors
+            // Instantiate UI Managers first if they are needed by core processors
+            // VideoMerger needs timelineUIManager, so instantiate it here.
+            // VideoMerger itself is a dependency for TimelineUIManager to call back methods like seekTo.
+            // This creates a slight circular dependency in terms of instantiation order if not careful.
+            // Solution: Pass a reference or use event-based communication.
+            // For now, we'll pass VideoMerger instance later if TimelineUIManager needs it directly.
+            
+            const timelineUIManager = new TimelineUIManager(
+                this.dependencies.timelineBar,
+                null, // VideoMerger instance will be set later or methods called via VideoEditor
+                this.dependencies.videoElement
+            );
+
             this.processors = {
-                loader,
-                audio,
-                filter,
-                text,
-                merger,
-                trimmer
+                loader: new VideoLoader(this.dependencies),
+                audio: new AudioOverlay(this.dependencies),
+                filter: new FilterApplier(this.dependencies), // Or FilterProcessor if that's the correct one
+                text: new TextOverlay({ ...this.dependencies, textElement: textOverlayElement }),
+                merger: new VideoMerger({ ...this.dependencies, timelineUIManager }), // Pass timelineUIManager
+                trimmer: new VideoTrimmer(this.dependencies),
+                exporter: new VideoExporter({ processors: this.processors, debugElement: this.dependencies.debugElement }), // Pass relevant parts of processors
+                timelineUIManager: timelineUIManager, // Store for direct access if needed
             };
+            
+            // Now that merger is instantiated, if timelineUIManager needs a direct reference:
+            timelineUIManager.merger = this.processors.merger;
 
-            // Now that all processors exist, pass the entire processors object
-            // to any processor that might need to reference others.
-            // For example, VideoMerger needs it for audio processing.
-            if (this.processors.merger) {
-                this.processors.merger.processors = this.processors;
-            }
-            // If other processors need it, set it here too:
-            // if (this.processors.someOtherProcessor) {
-            //     this.processors.someOtherProcessor.processors = this.processors;
-            // }
 
-            // Now, call setupTimelineElements for merger
-            if (this.processors.merger && this.processors.merger.timelineBar) {
-                this.processors.merger.setupTimelineElements();
-            }
+            // Pass the full 'processors' object to components that need access to others
+            // For example, VideoMerger might need access to 'audio' processor for its internal logic.
+            // And VideoExporter needs access to 'filter' and 'text' processors.
+            this.processors.merger.processors = this.processors; // For audio processing within merger
+            this.processors.exporter.processors = this.processors; // For filter/text application during export
+
+            // Initial setup for timeline UI
+            this.processors.timelineUIManager.setupTimelineElements();
+
 
         } catch (error) {
             console.error('Initialization error details:', error);
-            throw new Error(`Failed to initialize: ${error.message}`);
+            throw new Error(`Failed to initialize VideoEditor: ${error.message}`);
         }
     }
 
@@ -73,33 +78,26 @@ export class VideoEditor {
     }
 
     async loadVideos(files, audioFile = null) {
-        this.currentVideoFiles = Array.from(files || []);
-        this.timeline = new TimelineManager();
-        
-        for (const file of this.currentVideoFiles) {
-            this.timeline.addVideo(file);
-        }
-        
-        await this.timeline.loadDurations();
-        
-        // Always use the merger for any video files, even a single video
-        // This ensures consistent timeline behavior
+        const videoFiles = Array.from(files || []);
+        // VideoMerger's process method now handles loading durations internally using MediaInfo
         await this.processors.merger.process({ 
-            videoFiles: this.currentVideoFiles,
+            videoFiles: videoFiles,
             audioFile: audioFile 
         });
-
-        // If audioFile exists but wasn't processed by merger, process it separately
-        if (audioFile && !this.processors.merger.audioFile) {
-            await this.processors.audio.process({ file: audioFile });
-        }
+        // TimelineUIManager's updateTimelineSegments and updateTimeDisplay are called within merger.process
     }
 
-    applyAudio(audioFile) { // Added audioFile parameter based on main.js handleAudioUpload
-        if (this.processors.audio) {
-            this.processors.audio.process({ file: audioFile });
+    applyAudio(audioFile) {
+        // This might now be primarily handled by loadVideos passing the audioFile to merger.
+        // If separate application is needed:
+        if (this.processors.merger) {
+            // Reloading with the new audio file
+            this.processors.merger.process({ 
+                videoFiles: this.processors.merger.videos, // Keep current videos
+                audioFile: audioFile 
+            });
         } else {
-            console.error("Audio processor is not available.");
+            console.error("Merger processor is not available for applying audio.");
         }
     }
 
@@ -111,38 +109,63 @@ export class VideoEditor {
         this.processors.text.process({ text, position, color, size });
     }
 
-    applyTrim(startTime, endTime) {
-        this.processors.trimmer.process({ startTime, endTime });
+    async trimSingleVideo(videoIndex, startTime, endTime) {
+        if (!this.processors.merger || !this.processors.trimmer) {
+            throw new Error("Merger or Trimmer not initialized.");
+        }
+        if (videoIndex < 0 || videoIndex >= this.processors.merger.videos.length) {
+            throw new Error("Invalid video index for trimming.");
+        }
+
+        const videoFileToTrim = this.processors.merger.videos[videoIndex];
+        // const originalDuration = this.processors.merger.durations[videoIndex]; // Use this for validation if needed
+
+        // Use the advanced trimVideoSegmentLowLatency for better results with audio
+        const trimmedBlob = await this.processors.trimmer.trimVideoSegmentLowLatency(videoFileToTrim, startTime, endTime);
+        
+        if (trimmedBlob && trimmedBlob.size > 0) {
+            this.processors.merger.videos[videoIndex] = trimmedBlob;
+            // The duration of the trimmedBlob should ideally be known or re-calculated.
+            // For now, _knownDuration is set by trimVideoSegmentLowLatency.
+            // Then, reload media durations in merger.
+            await this.processors.merger.loadMediaDurations(); // This will update durations and totalDuration
+            
+            // If current video was trimmed, reload it. Otherwise, just update UI.
+            if (this.processors.merger.currentIndex === videoIndex) {
+                await this.processors.merger.loadVideo(videoIndex);
+            }
+            
+            this.processors.timelineUIManager.updateTimelineSegments();
+            this.processors.timelineUIManager.updateTimeDisplay();
+            this.dependencies.debugElement.textContent = `Status: Video ${videoIndex + 1} trimmed.`;
+        } else {
+            this.dependencies.debugElement.textContent = `Status: Trimming video ${videoIndex + 1} resulted in empty file.`;
+        }
+    }
+    
+    async exportMedia(exportOptions) {
+        if (!this.processors.exporter || !this.processors.merger) {
+            this.dependencies.debugElement.textContent = "Exporter or Merger not initialized.";
+            return null;
+        }
+        return await this.processors.exporter.exportVideo(
+            this.processors.merger.videos,
+            this.processors.merger.durations,
+            this.processors.merger.audioFile,
+            this.processors.merger.audioDuration,
+            exportOptions
+        );
     }
 
     getCurrentTime() {
-        // Ensure processors and merger are initialized before calling this
-        if (this.processors && this.processors.merger && this.processors.trimmer) {
-            return this.processors.trimmer.isTrimmedState
-                ? this.processors.trimmer.videoElement.currentTime - this.processors.trimmer.startTimeValue
-                : this.processors.merger.getCurrentTime();
-        }
-        return 0; // Default or error state
+        return this.processors.merger ? this.processors.merger.getCurrentTime() : 0;
     }
 
     seekTo(time) {
-        // Ensure processors and merger are initialized
-        if (this.processors && this.processors.merger && this.processors.trimmer) {
-            const newTime = this.processors.trimmer.isTrimmedState
-                ? this.processors.trimmer.startTimeValue + time
-                : this.processors.merger.seekTo(time); // seekTo in merger should return the time
-            this.processors.trimmer.videoElement.currentTime = newTime;
-        }
+       if (this.processors.merger) this.processors.merger.seekTo(time);
     }
 
     formatTime(seconds) {
-        // Ensure timeline is initialized
-        if (this.timeline) {
-            return this.timeline.formatTime(seconds);
-        }
-        // Fallback formatting if timeline isn't ready (should ideally not happen in normal flow)
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        return this.processors.merger ? this.processors.merger.formatTime(seconds) : "00:00";
     }
 }
