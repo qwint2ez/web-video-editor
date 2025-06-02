@@ -1,13 +1,13 @@
 import { AudioOverlay } from './audioOverlay.js';
 import { FilterApplier } from './filterApplier.js';
 import { TextOverlay } from './textOverlay.js';
-// import { VideoLoader } from './videoLoader.js'; // Удаляем импорт
+// import { VideoLoader } from './videoLoader.js';
 import { VideoMerger } from './videoMerger.js';
 import { VideoTrimmer } from './videoTrimmer.js';
 import { VideoExporter } from './videoExporter.js';
-import { TimelineUIManager } from '../../../src/core/timelineUIManager.js'; // Changed: Adjusted path for serving from node_modules
-import { ProjectSerializer } from './projectSerializer.js'; // Changed: Используем относительный путь
-// MediaInfo is used internally by VideoMerger now
+import { TimelineUIManager } from '../../../src/core/timelineUIManager.js';
+import { ProjectSerializer } from './projectSerializer.js';
+
 
 export class VideoEditor {
     constructor(dependencies) {
@@ -17,8 +17,8 @@ export class VideoEditor {
         
         this.dependencies = dependencies;
         this.processors = {};
-        this.projectSerializer = new ProjectSerializer(); // Added
-        this._projectDefinitionForLoad = null; // Added: To store parsed project data during load
+        this.projectSerializer = new ProjectSerializer();
+        this._projectDefinitionForLoad = null; // To store parsed project data during load
         this.initializeDependencies();
     }
 

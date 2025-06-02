@@ -1,1 +1,10 @@
 export { VideoEditor } from './videoEditor.js';
+export { AudioOverlay } from './audioOverlay.js';
+export { FilterApplier } from './filterApplier.js';
+export { TextOverlay } from './textOverlay.js';
+export { VideoMerger } from './videoMerger.js';
+export { VideoTrimmer } from './videoTrimmer.js';
+export { VideoExporter } from './videoExporter.js';
+export { ProjectSerializer } from './projectSerializer.js';
+export { MediaInfo } from './mediaInfo.js';
+export { VideoProcessor } from './videoProcessor.js';

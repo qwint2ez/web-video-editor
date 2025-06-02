@@ -1,4 +1,5 @@
-import { VideoEditor } from '../../node_modules/utils-library/src/index.js'; // Changed: Point to the library using a relative path
+import { VideoEditor } from '../../node_modules/utils-library/src/index.js';
+//import { VideoEditor } from 'utils-library';
 
 // State management 
 const state = {

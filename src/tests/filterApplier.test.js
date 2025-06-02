@@ -1,4 +1,4 @@
-import { FilterApplier } from '../core/filterApplier.js';
+import { FilterApplier } from '../core/fimport { VideoEditor } from 'utils-library'; // ✅ Работает в Node.jsilterApplier.js';
 
 describe('FilterApplier', () => {
   let dependencies;

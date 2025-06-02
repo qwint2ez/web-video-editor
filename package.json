@@ -2,21 +2,24 @@
   "name": "web-video-editor",
   "version": "1.0.0",
   "main": "main.js",
+  "type": "module",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "install-lib": "npm install ./utils-library",
+    "update-lib": "npm update utils-library"
   },
   "keywords": [],
-  "author": "",
+  "author": "Свидинский Александр Витальевич",
   "license": "ISC",
-  "description": "",
+  "description": "Web-based video editor with modular architecture",
   "dependencies": {
-    "utils-library": "file:../utils-library"
+    "utils-library": "file:utils-library"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0",
-    "babel-jest": "^29.7.0",
     "@babel/preset-env": "^7.25.7",
-    "identity-obj-proxy": "^3.0.0"
+    "babel-jest": "^29.7.0",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
   }
 }

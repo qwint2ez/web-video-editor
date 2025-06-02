@@ -3,11 +3,8 @@
   "version": "1.0.0",
   "main": "src/index.js",
   "type": "module",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": ""
+  "description": "Business logic library for video processing",
+  "keywords": ["video", "processing", "editor"],
+  "author": "Свидинский Александр Витальевич",
+  "license": "ISC"
 }
